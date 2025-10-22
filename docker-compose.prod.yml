@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: hospital_postgres_prod
+    environment:
+      POSTGRES_DB: hospital_value
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d
+    networks:
+      - hospital_prod_network
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d hospital_value"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: hospital_redis_prod
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_prod_data:/data
+    networks:
+      - hospital_prod_network
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: hospital_backend_prod
+    env_file:
+      - ./backend/.env.prod
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/logs:/app/logs
+    networks:
+      - hospital_prod_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: hospital_celery_prod
+    env_file:
+      - ./backend/.env.prod
+    volumes:
+      - ./backend/logs:/app/logs
+    networks:
+      - hospital_prod_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+    command: celery -A app.celery_app worker --loglevel=info
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: hospital_frontend_prod
+    ports:
+      - "80:80"
+    networks:
+      - hospital_prod_network
+    depends_on:
+      - backend
+    restart: always
+
+volumes:
+  postgres_prod_data:
+    name: hospital_postgres_prod_data
+  redis_prod_data:
+    name: hospital_redis_prod_data
+
+networks:
+  hospital_prod_network:
+    name: hospital_prod_network
+    driver: bridge

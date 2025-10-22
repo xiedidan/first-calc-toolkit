@@ -395,6 +395,8 @@
 | size | integer | 否 | 每页数量，默认10 |
 | keyword | string | 否 | 搜索关键词 |
 | is_active | boolean | 否 | 是否激活 |
+| sort_by | string | 否 | 排序字段，可选值：sort_order(默认)、his_code、his_name、cost_center_code、cost_center_name、accounting_unit_code、accounting_unit_name、created_at |
+| sort_order | string | 否 | 排序方向，可选值：asc(升序，默认)、desc(降序) |
 
 **响应数据**:
 | 参数名 | 类型 | 说明 |
@@ -402,6 +404,7 @@
 | total | integer | 总数量 |
 | items | array | 科室列表 |
 | items[].id | integer | 科室ID |
+| items[].sort_order | number | 排序序号（小数类型） |
 | items[].his_code | string | HIS科室代码 |
 | items[].his_name | string | HIS科室名称 |
 | items[].cost_center_code | string | 成本中心代码 |
@@ -420,6 +423,7 @@
 |---|---|---|---|
 | his_code | string | 是 | HIS科室代码 |
 | his_name | string | 是 | HIS科室名称 |
+| sort_order | number | 否 | 排序序号，默认为当前最大序号+1 |
 | cost_center_code | string | 否 | 成本中心代码 |
 | cost_center_name | string | 否 | 成本中心名称 |
 | accounting_unit_code | string | 否 | 核算单元代码 |
@@ -434,6 +438,7 @@
 | 参数名 | 类型 | 说明 |
 |---|---|---|
 | id | integer | 科室ID |
+| sort_order | number | 排序序号 |
 | his_code | string | HIS科室代码 |
 | his_name | string | HIS科室名称 |
 | cost_center_code | string | 成本中心代码 |
@@ -452,6 +457,7 @@
 | 参数名 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | his_name | string | 否 | HIS科室名称 |
+| sort_order | number | 否 | 排序序号 |
 | cost_center_code | string | 否 | 成本中心代码 |
 | cost_center_name | string | 否 | 成本中心名称 |
 | accounting_unit_code | string | 否 | 核算单元代码 |
