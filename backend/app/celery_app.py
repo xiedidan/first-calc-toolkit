@@ -24,5 +24,6 @@ celery_app.conf.update(
     task_soft_time_limit=3300,  # 55分钟软超时
 )
 
-# 自动发现任务（后续添加）
-# celery_app.autodiscover_tasks(['app.services.calculation'])
+# 导入任务模块（必须在配置之后）
+# 这样 Celery worker 启动时会自动注册这些任务
+from app.tasks import import_tasks  # noqa: F401

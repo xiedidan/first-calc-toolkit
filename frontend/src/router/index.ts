@@ -29,10 +29,22 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '用户管理' }
       },
       {
+        path: '/charge-items',
+        name: 'ChargeItems',
+        component: () => import('@/views/ChargeItems.vue'),
+        meta: { title: '收费项目管理' }
+      },
+      {
         path: '/departments',
         name: 'Departments',
         component: () => import('@/views/Departments.vue'),
         meta: { title: '科室管理' }
+      },
+      {
+        path: '/dimension-items',
+        name: 'DimensionItems',
+        component: () => import('@/views/DimensionItems.vue'),
+        meta: { title: '维度目录管理' }
       }
     ]
   }

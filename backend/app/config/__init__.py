@@ -1,5 +1,5 @@
 """
-应用配置
+配置模块
 """
 from pydantic_settings import BaseSettings
 from typing import Optional
@@ -38,3 +38,5 @@ class Settings(BaseSettings):
 
 # 创建全局配置实例
 settings = Settings()
+
+__all__ = ["settings", "Settings"]

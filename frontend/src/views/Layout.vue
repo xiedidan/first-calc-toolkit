@@ -44,9 +44,17 @@
             <el-icon><User /></el-icon>
             <span>用户管理</span>
           </el-menu-item>
+          <el-menu-item index="/charge-items">
+            <el-icon><Tickets /></el-icon>
+            <span>收费项目管理</span>
+          </el-menu-item>
           <el-menu-item index="/departments">
             <el-icon><OfficeBuilding /></el-icon>
             <span>科室管理</span>
+          </el-menu-item>
+          <el-menu-item index="/dimension-items">
+            <el-icon><List /></el-icon>
+            <span>维度目录管理</span>
           </el-menu-item>
         </el-menu>
       </el-aside>
@@ -62,7 +70,7 @@
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { User, ArrowDown, SwitchButton, HomeFilled, OfficeBuilding } from '@element-plus/icons-vue'
+import { User, ArrowDown, SwitchButton, HomeFilled, OfficeBuilding, List, Tickets } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()

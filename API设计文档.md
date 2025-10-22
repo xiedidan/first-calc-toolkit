@@ -369,7 +369,284 @@
 
 ---
 
-## 4. 科室管理服务 API
+## 4. 收费项目管理服务 API
+
+### API汇总表
+
+| 接口路径 | 方法 | 描述 | 权限要求 |
+|---|---|---|---|
+| `/charge-items` | GET | 获取收费项目列表 | 系统管理员/模型设计师 |
+| `/charge-items` | POST | 创建新收费项目 | 系统管理员 |
+| `/charge-items/{id}` | GET | 获取收费项目详情 | 系统管理员/模型设计师 |
+| `/charge-items/{id}` | PUT | 更新收费项目信息 | 系统管理员 |
+| `/charge-items/{id}` | DELETE | 删除收费项目 | 系统管理员 |
+| `/charge-items/import` | POST | 批量导入收费项目 | 系统管理员 |
+| `/charge-items/export` | POST | 导出收费项目 | 系统管理员/模型设计师 |
+
+### 4.1. 收费项目管理
+
+#### 4.1.1. 获取收费项目列表
+- **接口**: `GET /charge-items`
+- **描述**: 获取收费项目列表
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| page | integer | 否 | 页码，默认1 |
+| size | integer | 否 | 每页数量，默认10 |
+| keyword | string | 否 | 搜索关键词（项目编码/名称/分类） |
+| item_category | string | 否 | 项目分类筛选 |
+| sort_by | string | 否 | 排序字段，可选值：item_code(默认)、item_name、item_category、created_at |
+| sort_order | string | 否 | 排序方向，可选值：asc(升序，默认)、desc(降序) |
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| total | integer | 总数量 |
+| items | array | 收费项目列表 |
+| items[].id | integer | 项目ID |
+| items[].item_code | string | 收费项目编码 |
+| items[].item_name | string | 收费项目名称 |
+| items[].item_category | string | 收费项目分类 |
+| items[].unit_price | string | 单价 |
+| items[].created_at | string | 创建时间 |
+| items[].updated_at | string | 更新时间 |
+
+#### 4.1.2. 创建收费项目
+- **接口**: `POST /charge-items`
+- **描述**: 创建新收费项目
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| item_code | string | 是 | 收费项目编码 |
+| item_name | string | 是 | 收费项目名称 |
+| item_category | string | 否 | 收费项目分类 |
+| unit_price | string | 否 | 单价 |
+
+**请求示例**:
+```json
+{
+  "item_code": "CK001",
+  "item_name": "血常规",
+  "item_category": "检验",
+  "unit_price": "25.00"
+}
+```
+
+#### 4.1.3. 获取收费项目详情
+- **接口**: `GET /charge-items/{id}`
+- **描述**: 获取收费项目详情
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| id | integer | 项目ID |
+| item_code | string | 收费项目编码 |
+| item_name | string | 收费项目名称 |
+| item_category | string | 收费项目分类 |
+| unit_price | string | 单价 |
+| created_at | string | 创建时间 |
+| updated_at | string | 更新时间 |
+
+#### 4.1.4. 更新收费项目信息
+- **接口**: `PUT /charge-items/{id}`
+- **描述**: 更新收费项目信息
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| item_name | string | 否 | 收费项目名称 |
+| item_category | string | 否 | 收费项目分类 |
+| unit_price | string | 否 | 单价 |
+
+**注意**: 收费项目编码（item_code）创建后不可修改
+
+#### 4.1.5. 删除收费项目
+- **接口**: `DELETE /charge-items/{id}`
+- **描述**: 删除收费项目
+
+**注意**: 如果收费项目已被维度目录引用，将无法删除
+
+#### 4.1.6. 批量导入收费项目（异步）
+- **接口**: `POST /charge-items/import`
+- **描述**: 批量导入收费项目（支持异步模式和字段映射）
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| file | file | 是 | Excel文件（仅支持 .xlsx 格式） |
+| mapping | string | 是 | 字段映射JSON字符串 |
+| async_mode | boolean | 否 | 是否使用异步模式（默认 true） |
+
+**字段映射格式**:
+```json
+{
+  "项目编码": "item_code",
+  "项目名称": "item_name",
+  "分类": "item_category",
+  "单价": "unit_price"
+}
+```
+
+**响应数据（异步模式）**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| task_id | string | 任务ID，用于查询进度 |
+| status | string | 任务状态（pending） |
+| message | string | 提示信息 |
+
+**响应示例（异步模式）**:
+```json
+{
+  "task_id": "57764026-9db6-4b83-b65a-017ad6091275",
+  "status": "pending",
+  "message": "导入任务已提交，请使用 task_id 查询进度"
+}
+```
+
+**响应数据（同步模式）**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| success_count | integer | 成功导入数量 |
+| failed_count | integer | 失败数量 |
+| failed_items | array | 失败的项目列表 |
+| failed_items[].row | integer | 行号 |
+| failed_items[].data | object | 原始数据 |
+| failed_items[].reason | string | 失败原因 |
+
+**响应示例（同步模式）**:
+```json
+{
+  "success_count": 80,
+  "failed_count": 2,
+  "failed_items": [
+    {
+      "row": 5,
+      "data": {"项目编码": "CK005", "项目名称": ""},
+      "reason": "项目名称不能为空"
+    },
+    {
+      "row": 10,
+      "data": {"项目编码": "CK001", "项目名称": "重复项目"},
+      "reason": "项目编码已存在"
+    }
+  ]
+}
+```
+
+**注意事项**:
+- 大数据量（> 1000 条）建议使用异步模式
+- 异步模式需要 Redis 和 Celery Worker 正常运行
+- 仅支持 `.xlsx` 格式，不支持旧的 `.xls` 格式
+
+#### 4.1.6.1. 查询导入任务状态
+- **接口**: `GET /charge-items/import/status/{task_id}`
+- **描述**: 查询异步导入任务的状态和进度
+
+**路径参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| task_id | string | 是 | 任务ID |
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| state | string | 任务状态（PENDING/PROCESSING/SUCCESS/FAILURE） |
+| status | string | 状态描述 |
+| current | integer | 已处理数量（仅 PROCESSING 状态） |
+| total | integer | 总数量（仅 PROCESSING 状态） |
+| result | object | 导入结果（仅 SUCCESS 状态） |
+| error | string | 错误信息（仅 FAILURE 状态） |
+
+**响应示例（处理中）**:
+```json
+{
+  "state": "PROCESSING",
+  "status": "正在导入数据... (5000/10000)",
+  "current": 5000,
+  "total": 10000
+}
+```
+
+**响应示例（完成）**:
+```json
+{
+  "state": "SUCCESS",
+  "status": "导入完成",
+  "result": {
+    "success_count": 9998,
+    "failed_count": 2,
+    "failed_items": [...]
+  }
+}
+```
+
+**响应示例（失败）**:
+```json
+{
+  "state": "FAILURE",
+  "status": "导入失败",
+  "error": "数据库连接失败"
+}
+```
+
+#### 4.1.7. 解析Excel文件
+- **接口**: `POST /charge-items/parse`
+- **描述**: 解析Excel文件，返回表头和预览数据
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| file | file | 是 | Excel文件 |
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| headers | array | Excel表头列表 |
+| preview_data | array | 预览数据（前10行） |
+| total_rows | integer | 总行数 |
+| suggested_mapping | object | 建议的字段映射 |
+
+**响应示例**:
+```json
+{
+  "headers": ["项目编码", "项目名称", "分类", "单价"],
+  "preview_data": [
+    ["CK001", "血常规", "检验", "25.00"],
+    ["CK002", "尿常规", "检验", "15.00"]
+  ],
+  "total_rows": 100,
+  "suggested_mapping": {
+    "项目编码": "item_code",
+    "项目名称": "item_name",
+    "分类": "item_category",
+    "单价": "unit_price"
+  }
+}
+```
+
+#### 4.1.8. 下载导入模板
+- **接口**: `GET /charge-items/template`
+- **描述**: 下载收费项目导入模板
+
+**响应**: Excel文件流
+
+#### 4.1.9. 导出收费项目
+- **接口**: `POST /charge-items/export`
+- **描述**: 导出收费项目为Excel文件
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| keyword | string | 否 | 搜索关键词 |
+| item_category | string | 否 | 项目分类筛选 |
+
+**响应**: Excel文件流
+
+---
+
+## 5. 科室管理服务 API
 
 ### API汇总表
 
@@ -382,9 +659,9 @@
 | `/departments/{id}` | DELETE | 删除科室 | 系统管理员 |
 | `/departments/{id}/toggle-evaluation` | PUT | 切换科室评估状态 | 系统管理员 |
 
-### 4.1. 科室管理
+### 5.1. 科室管理
 
-#### 4.1.1. 获取科室列表
+#### 5.1.1. 获取科室列表
 - **接口**: `GET /departments`
 - **描述**: 获取科室列表
 
@@ -414,7 +691,7 @@
 | items[].is_active | boolean | 是否参与评估 |
 | items[].created_at | string | 创建时间 |
 
-#### 4.1.2. 创建科室
+#### 5.1.2. 创建科室
 - **接口**: `POST /departments`
 - **描述**: 创建新科室
 
@@ -430,7 +707,7 @@
 | accounting_unit_name | string | 否 | 核算单元名称 |
 | is_active | boolean | 否 | 是否参与评估，默认true |
 
-#### 4.1.3. 获取科室详情
+#### 5.1.3. 获取科室详情
 - **接口**: `GET /departments/{id}`
 - **描述**: 获取科室详情
 
@@ -449,7 +726,7 @@
 | created_at | string | 创建时间 |
 | updated_at | string | 更新时间 |
 
-#### 4.1.4. 更新科室信息
+#### 5.1.4. 更新科室信息
 - **接口**: `PUT /departments/{id}`
 - **描述**: 更新科室信息
 
@@ -463,11 +740,11 @@
 | accounting_unit_code | string | 否 | 核算单元代码 |
 | accounting_unit_name | string | 否 | 核算单元名称 |
 
-#### 4.1.5. 删除科室
+#### 5.1.5. 删除科室
 - **接口**: `DELETE /departments/{id}`
 - **描述**: 删除科室
 
-#### 4.1.6. 切换科室评估状态
+#### 5.1.6. 切换科室评估状态
 - **接口**: `PUT /departments/{id}/toggle-evaluation`
 - **描述**: 切换科室评估状态
 
@@ -478,7 +755,7 @@
 
 ---
 
-## 5. 计算引擎服务 API
+## 6. 计算引擎服务 API
 
 ### API汇总表
 
@@ -489,9 +766,9 @@
 | `/calculation/tasks/{id}/log` | GET | 获取任务日志 | 数据分析师/操作员 |
 | `/calculation/tasks/{id}/cancel` | POST | 取消计算任务 | 数据分析师/操作员 |
 
-### 5.1. 计算任务管理
+### 6.1. 计算任务管理
 
-#### 5.1.1. 创建计算任务
+#### 6.1.1. 创建计算任务
 - **接口**: `POST /calculation/tasks`
 - **描述**: 创建并启动计算任务
 
@@ -510,7 +787,7 @@
 | status | string | 任务状态 |
 | created_at | string | 创建时间 |
 
-#### 5.1.2. 获取计算任务列表
+#### 6.1.2. 获取计算任务列表
 - **接口**: `GET /calculation/tasks`
 - **描述**: 获取计算任务列表
 
@@ -537,7 +814,7 @@
 | items[].completed_at | string | 完成时间 |
 | items[].error_message | string | 错误信息 |
 
-#### 5.1.3. 获取任务日志
+#### 6.1.3. 获取任务日志
 - **接口**: `GET /calculation/tasks/{id}/log`
 - **描述**: 获取任务日志
 
@@ -554,7 +831,7 @@
 | logs[].level | string | 日志级别 |
 | logs[].message | string | 日志消息 |
 
-#### 5.1.4. 取消计算任务
+#### 6.1.4. 取消计算任务
 - **接口**: `POST /calculation/tasks/{id}/cancel`
 - **描述**: 取消计算任务
 
@@ -571,7 +848,7 @@
 
 ---
 
-## 6. 结果与报表服务 API
+## 7. 结果与报表服务 API
 
 ### API汇总表
 
@@ -583,9 +860,9 @@
 | `/results/export/detail` | POST | 导出明细表 | 数据分析师/操作员 |
 | `/results/export/{task_id}/download` | GET | 下载报表文件 | 数据分析师/操作员 |
 
-### 6.1. 结果查询
+### 7.1. 结果查询
 
-#### 6.1.1. 获取科室汇总数据
+#### 7.1.1. 获取科室汇总数据
 - **接口**: `GET /results/summary`
 - **描述**: 获取科室汇总数据
 
@@ -618,7 +895,7 @@
 | departments[].tech_ratio | number | 医技占比 |
 | departments[].total_value | number | 科室总价值 |
 
-#### 6.1.2. 获取科室详细业务价值数据
+#### 7.1.2. 获取科室详细业务价值数据
 - **接口**: `GET /results/detail?dept_id={id}&task_id={id}`
 - **描述**: 获取科室详细业务价值数据
 
@@ -647,9 +924,9 @@
 | sequences[].dimensions[].items[].quantity | number | 项目数量 |
 | sequences[].dimensions[].items[].unit_price | number | 单价 |
 
-### 6.2. 报表导出
+### 7.2. 报表导出
 
-#### 6.2.1. 导出汇总表
+#### 7.2.1. 导出汇总表
 - **接口**: `POST /results/export/summary`
 - **描述**: 导出汇总表
 
@@ -666,7 +943,7 @@
 | task_id | string | 导出任务ID |
 | download_url | string | 下载链接（完成后） |
 
-#### 6.2.2. 导出明细表
+#### 7.2.2. 导出明细表
 - **接口**: `POST /results/export/detail`
 - **描述**: 导出明细表
 
@@ -676,7 +953,7 @@
 | task_id | string | 是 | 计算任务ID |
 | department_ids | array | 否 | 科室ID列表 |
 
-#### 6.2.3. 下载报表文件
+#### 7.2.3. 下载报表文件
 - **接口**: `GET /results/export/{task_id}/download`
 - **描述**: 下载报表文件
 
@@ -689,7 +966,7 @@
 
 ---
 
-## 7. 系统配置 API
+## 8. 系统配置 API
 
 ### API汇总表
 
@@ -698,9 +975,9 @@
 | `/system/settings` | GET | 获取系统设置 | 所有用户 |
 | `/system/settings` | PUT | 更新系统设置 | 系统管理员 |
 
-### 7.1. 系统设置
+### 8.1. 系统设置
 
-#### 7.1.1. 获取系统设置
+#### 8.1.1. 获取系统设置
 - **接口**: `GET /system/settings`
 - **描述**: 获取系统设置
 
@@ -711,7 +988,7 @@
 | system_name | string | 系统名称 |
 | version | string | 系统版本 |
 
-#### 7.1.2. 更新系统设置
+#### 8.1.2. 更新系统设置
 - **接口**: `PUT /system/settings`
 - **描述**: 更新系统设置
 
@@ -723,23 +1000,23 @@
 
 ---
 
-## 8. 附录
+## 9. 附录
 
-### 8.1. 数据字典
+### 9.1. 数据字典
 
-#### 8.1.1. 节点类型 (node_type)
+#### 9.1.1. 节点类型 (node_type)
 | 值 | 说明 |
 |---|---|
 | sequence | 序列 |
 | dimension | 维度 |
 
-#### 8.1.2. 计算类型 (calc_type)
+#### 9.1.2. 计算类型 (calc_type)
 | 值 | 说明 |
 |---|---|
 | statistical | 统计型 |
 | calculational | 计算型 |
 
-#### 8.1.3. 任务状态 (task_status)
+#### 9.1.3. 任务状态 (task_status)
 | 值 | 说明 |
 |---|---|
 | pending | 排队中 |
@@ -748,14 +1025,14 @@
 | failed | 失败 |
 | cancelled | 已取消 |
 
-#### 8.1.4. 用户状态 (user_status)
+#### 9.1.4. 用户状态 (user_status)
 | 值 | 说明 |
 |---|---|
 | active | 激活 |
 | inactive | 未激活 |
 | locked | 锁定 |
 
-### 8.2. 认证说明
+### 9.2. 认证说明
 
 所有需要认证的API都需要在请求头中携带JWT Token：
 
@@ -765,7 +1042,7 @@ Authorization: Bearer <token>
 
 Token有效期为24小时，过期后需要重新登录获取。
 
-### 8.3. 分页说明
+### 9.3. 分页说明
 
 列表接口支持分页，分页参数为：
 - `page`: 页码，从1开始

@@ -6,6 +6,8 @@ from .role import Role
 from .permission import Permission
 from .associations import user_roles, role_permissions
 from .department import Department
+from .charge_item import ChargeItem
+from .dimension_item_mapping import DimensionItemMapping
 
 __all__ = [
     "User",
@@ -15,4 +17,6 @@ __all__ = [
     "user_roles",
     "role_permissions",
     "Department",
+    "ChargeItem",
+    "DimensionItemMapping",
 ]
