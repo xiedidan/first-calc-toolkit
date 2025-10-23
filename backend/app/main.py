@@ -48,7 +48,7 @@ async def health_check():
 
 
 # 导入路由
-from app.api import auth, users, departments, dimension_items, charge_items
+from app.api import auth, users, departments, dimension_items, charge_items, model_versions, model_nodes
 
 # 注册路由
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
@@ -56,3 +56,5 @@ app.include_router(users.router, prefix="/api/v1/users", tags=["用户管理"])
 app.include_router(charge_items.router, prefix="/api/v1/charge-items", tags=["收费项目管理"])
 app.include_router(departments.router, prefix="/api/v1/departments", tags=["科室管理"])
 app.include_router(dimension_items.router, prefix="/api/v1/dimension-items", tags=["维度目录管理"])
+app.include_router(model_versions.router, prefix="/api/v1/model-versions", tags=["模型版本管理"])
+app.include_router(model_nodes.router, prefix="/api/v1/model-nodes", tags=["模型节点管理"])

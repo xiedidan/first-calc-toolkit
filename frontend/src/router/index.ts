@@ -45,6 +45,18 @@ const routes: RouteRecordRaw[] = [
         name: 'DimensionItems',
         component: () => import('@/views/DimensionItems.vue'),
         meta: { title: '维度目录管理' }
+      },
+      {
+        path: '/model-versions',
+        name: 'ModelVersions',
+        component: () => import('@/views/ModelVersions.vue'),
+        meta: { title: '评估模型管理' }
+      },
+      {
+        path: '/model-nodes/:versionId',
+        name: 'ModelNodes',
+        component: () => import('@/views/ModelNodes.vue'),
+        meta: { title: '模型结构编辑' }
       }
     ]
   }

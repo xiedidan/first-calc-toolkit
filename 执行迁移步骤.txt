@@ -1,0 +1,43 @@
+数据库迁移步骤
+================
+
+方法1: 使用Anaconda Prompt（推荐）
+----------------------------------
+1. 双击 open-anaconda-prompt.bat
+2. 输入: cd backend
+3. 输入: alembic upgrade head
+4. 完成！
+
+
+方法2: 使用Python直接执行
+----------------------------------
+1. 打开命令提示符（CMD）
+2. 输入: cd backend
+3. 输入: python -m alembic upgrade head
+4. 完成！
+
+
+方法3: 使用简化批处理
+----------------------------------
+1. 双击 migrate-simple.bat
+2. 完成！
+
+
+验证迁移是否成功
+----------------------------------
+1. 打开Anaconda Prompt
+2. 输入: cd backend
+3. 输入: alembic current
+4. 应该显示: g1h2i3j4k5l6 (head)
+
+
+重启后端服务
+----------------------------------
+1. 在后端服务窗口按 Ctrl+C
+2. 重新运行: .\scripts\dev-start-backend.ps1
+3. 刷新浏览器
+
+
+如果还有问题
+----------------------------------
+查看详细文档: FIX_DATABASE_MIGRATION.md

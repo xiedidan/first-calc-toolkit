@@ -56,6 +56,10 @@
             <el-icon><List /></el-icon>
             <span>维度目录管理</span>
           </el-menu-item>
+          <el-menu-item index="/model-versions">
+            <el-icon><Document /></el-icon>
+            <span>评估模型管理</span>
+          </el-menu-item>
         </el-menu>
       </el-aside>
 
@@ -70,7 +74,7 @@
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { User, ArrowDown, SwitchButton, HomeFilled, OfficeBuilding, List, Tickets } from '@element-plus/icons-vue'
+import { User, ArrowDown, SwitchButton, HomeFilled, OfficeBuilding, List, Tickets, Document } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()

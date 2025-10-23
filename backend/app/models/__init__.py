@@ -8,6 +8,8 @@ from .associations import user_roles, role_permissions
 from .department import Department
 from .charge_item import ChargeItem
 from .dimension_item_mapping import DimensionItemMapping
+from .model_version import ModelVersion
+from .model_node import ModelNode
 
 __all__ = [
     "User",
@@ -19,4 +21,6 @@ __all__ = [
     "Department",
     "ChargeItem",
     "DimensionItemMapping",
+    "ModelVersion",
+    "ModelNode",
 ]

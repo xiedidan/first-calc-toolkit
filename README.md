@@ -4,10 +4,24 @@
 
 ## 📋 项目文档
 
+### 核心文档
 - [需求文档](./需求文档.md)
 - [系统设计文档](./系统设计文档.md)
 - [API设计文档](./API设计文档.md)
 - [部署文档](./部署文档.md)
+
+### 功能模块文档
+- [认证模块](./AUTH_API_COMPLETED.md) ✅
+- [用户管理](./FRONTEND_COMPLETED.md) ✅
+- [科室管理](./DEPARTMENTS_COMPLETED.md) ✅
+- [收费项目管理](./CHARGE_ITEMS_COMPLETED.md) ✅
+- [维度目录管理](./DIMENSION_ITEMS_COMPLETED.md) ✅
+- [模型版本管理](./MODEL_VERSION_COMPLETED.md) ✅ **NEW**
+- [Excel导入功能](./EXCEL_IMPORT_COMPLETED.md) ✅
+
+### 快速开始指南
+- [模型管理快速开始](./MODEL_VERSION_QUICKSTART.md) **NEW**
+- [异步导入快速开始](./QUICK_START_ASYNC_IMPORT.md)
 
 ## 🚀 快速开始
 
