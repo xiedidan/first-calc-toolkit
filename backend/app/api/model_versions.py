@@ -22,12 +22,26 @@ router = APIRouter()
 @router.get("", response_model=ModelVersionListResponse)
 def get_model_versions(
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 20,
+    search: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """获取模型版本列表"""
-    query = db.query(ModelVersion).order_by(ModelVersion.created_at.desc())
+    query = db.query(ModelVersion)
+    
+    # 搜索过滤
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.filter(
+            (ModelVersion.version.ilike(search_pattern)) |
+            (ModelVersion.name.ilike(search_pattern)) |
+            (ModelVersion.description.ilike(search_pattern))
+        )
+    
+    # 按创建时间倒序排列
+    query = query.order_by(ModelVersion.created_at.desc())
+    
     total = query.count()
     items = query.offset(skip).limit(limit).all()
     
@@ -197,6 +211,7 @@ def _copy_node_recursive(db: Session, source_node: ModelNode, target_version_id:
         unit=source_node.unit,
         business_guide=source_node.business_guide,
         script=source_node.script,
+        rule=source_node.rule,
     )
     db.add(new_node)
     db.flush()  # 获取新节点的ID

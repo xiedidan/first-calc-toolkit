@@ -362,7 +362,7 @@ onMounted(() => {
 
 <style scoped>
 .departments-container {
-  padding: 20px;
+  padding: 0;
 }
 
 .card-header {

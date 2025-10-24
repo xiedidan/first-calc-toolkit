@@ -284,7 +284,7 @@ onMounted(() => {
 
 <style scoped>
 .dimension-items-container {
-  padding: 20px;
+  padding: 0;
 }
 
 .card-header {

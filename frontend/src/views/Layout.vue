@@ -30,36 +30,60 @@
     </el-header>
 
     <el-container>
-      <el-aside width="200px" class="layout-aside">
+      <el-aside width="220px" class="layout-aside">
         <el-menu
           :default-active="activeMenu"
+          :default-openeds="['model', 'base-data', 'system']"
           router
           class="layout-menu"
         >
+          <!-- 首页 -->
           <el-menu-item index="/dashboard">
             <el-icon><HomeFilled /></el-icon>
             <span>首页</span>
           </el-menu-item>
-          <el-menu-item index="/users">
-            <el-icon><User /></el-icon>
-            <span>用户管理</span>
+
+          <!-- 评估模型管理 -->
+          <el-sub-menu index="model">
+            <template #title>
+              <el-icon><Document /></el-icon>
+              <span>评估模型管理</span>
+            </template>
+            <el-menu-item index="/model-versions">模型版本管理</el-menu-item>
+            <el-menu-item index="/dimension-items">维度目录管理</el-menu-item>
+          </el-sub-menu>
+
+          <!-- 计算任务管理 (未实现) -->
+          <el-menu-item index="/tasks" disabled>
+            <el-icon><Clock /></el-icon>
+            <span>计算任务管理</span>
           </el-menu-item>
-          <el-menu-item index="/charge-items">
-            <el-icon><Tickets /></el-icon>
-            <span>收费项目管理</span>
+
+          <!-- 报表查询展示 (未实现) -->
+          <el-menu-item index="/reports" disabled>
+            <el-icon><DataAnalysis /></el-icon>
+            <span>报表查询展示</span>
           </el-menu-item>
-          <el-menu-item index="/departments">
-            <el-icon><OfficeBuilding /></el-icon>
-            <span>科室管理</span>
-          </el-menu-item>
-          <el-menu-item index="/dimension-items">
-            <el-icon><List /></el-icon>
-            <span>维度目录管理</span>
-          </el-menu-item>
-          <el-menu-item index="/model-versions">
-            <el-icon><Document /></el-icon>
-            <span>评估模型管理</span>
-          </el-menu-item>
+
+          <!-- 基础数据管理 -->
+          <el-sub-menu index="base-data">
+            <template #title>
+              <el-icon><FolderOpened /></el-icon>
+              <span>基础数据管理</span>
+            </template>
+            <el-menu-item index="/departments">科室对照管理</el-menu-item>
+            <el-menu-item index="/charge-items">收费项目管理</el-menu-item>
+          </el-sub-menu>
+
+          <!-- 系统设置 -->
+          <el-sub-menu index="system">
+            <template #title>
+              <el-icon><Setting /></el-icon>
+              <span>系统设置</span>
+            </template>
+            <el-menu-item index="/settings" disabled>参数管理</el-menu-item>
+            <el-menu-item index="/users">用户管理</el-menu-item>
+          </el-sub-menu>
         </el-menu>
       </el-aside>
 
@@ -74,14 +98,34 @@
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { User, ArrowDown, SwitchButton, HomeFilled, OfficeBuilding, List, Tickets, Document } from '@element-plus/icons-vue'
+import { 
+  User, 
+  ArrowDown, 
+  SwitchButton, 
+  HomeFilled, 
+  Document, 
+  Clock, 
+  DataAnalysis, 
+  FolderOpened, 
+  Setting 
+} from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
 
-const activeMenu = computed(() => route.path)
+const activeMenu = computed(() => {
+  const path = route.path
+  // 处理子路由，让对应的菜单项高亮
+  if (path.startsWith('/model-nodes') || path.startsWith('/model-rules')) {
+    return '/model-versions'
+  }
+  if (path.startsWith('/dimension-items')) {
+    return '/dimension-items'
+  }
+  return path
+})
 
 const handleCommand = (command: string) => {
   if (command === 'logout') {
@@ -155,8 +199,42 @@ const handleCommand = (command: string) => {
   border-right: none;
 }
 
+/* 增强菜单项高亮效果 */
+.layout-menu :deep(.el-menu-item) {
+  transition: all 0.3s;
+}
+
+.layout-menu :deep(.el-menu-item:hover) {
+  background-color: #ecf5ff;
+}
+
+.layout-menu :deep(.el-menu-item.is-active) {
+  background-color: #409eff;
+  color: #fff;
+  font-weight: 600;
+}
+
+.layout-menu :deep(.el-menu-item.is-active .el-icon) {
+  color: #fff;
+}
+
+/* 子菜单样式 */
+.layout-menu :deep(.el-sub-menu__title) {
+  transition: all 0.3s;
+}
+
+.layout-menu :deep(.el-sub-menu__title:hover) {
+  background-color: #ecf5ff;
+}
+
+/* 禁用状态样式 */
+.layout-menu :deep(.el-menu-item.is-disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .layout-main {
   background: #f0f2f5;
-  padding: 20px;
+  padding: 10px;
 }
 </style>

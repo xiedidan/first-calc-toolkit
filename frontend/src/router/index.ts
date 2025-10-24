@@ -57,6 +57,12 @@ const routes: RouteRecordRaw[] = [
         name: 'ModelNodes',
         component: () => import('@/views/ModelNodes.vue'),
         meta: { title: '模型结构编辑' }
+      },
+      {
+        path: '/model-rules/:versionId',
+        name: 'ModelRules',
+        component: () => import('@/views/ModelRules.vue'),
+        meta: { title: '模型规则展示' }
       }
     ]
   }

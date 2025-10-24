@@ -379,7 +379,7 @@ onMounted(() => {
 
 <style scoped>
 .charge-items-container {
-  padding: 20px;
+  padding: 0;
 }
 
 .card-header {

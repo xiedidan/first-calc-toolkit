@@ -30,7 +30,7 @@ export interface ModelVersionUpdate {
 /**
  * 获取模型版本列表
  */
-export function getModelVersions(params?: { skip?: number; limit?: number }) {
+export function getModelVersions(params?: { skip?: number; limit?: number; search?: string }) {
   return request<{ total: number; items: ModelVersion[] }>({
     url: '/model-versions',
     method: 'get',
@@ -106,6 +106,7 @@ export interface ModelNode {
   unit?: string
   business_guide?: string
   script?: string
+  rule?: string
   created_at: string
   updated_at: string
   children?: ModelNode[]
@@ -125,6 +126,7 @@ export interface ModelNodeCreate {
   unit?: string
   business_guide?: string
   script?: string
+  rule?: string
 }
 
 export interface ModelNodeUpdate {
@@ -138,6 +140,7 @@ export interface ModelNodeUpdate {
   unit?: string
   business_guide?: string
   script?: string
+  rule?: string
 }
 
 /**

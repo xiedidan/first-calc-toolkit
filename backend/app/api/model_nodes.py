@@ -105,7 +105,7 @@ def create_model_node(
             detail="节点编码已存在"
         )
     
-    # 如果是末级维度，验证必填字段
+    # 如果是末级维度，验证必填字段（script不再必填）
     if node_in.is_leaf:
         if not node_in.calc_type:
             raise HTTPException(
@@ -121,11 +121,6 @@ def create_model_node(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="末级维度必须指定单位"
-            )
-        if not node_in.script:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="末级维度必须指定计算脚本"
             )
     
     # 如果没有指定sort_order，自动设置为最大值+1
@@ -227,11 +222,6 @@ def update_model_node(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="末级维度必须指定单位"
-            )
-        if not node.script:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="末级维度必须指定计算脚本"
             )
     
     db.commit()

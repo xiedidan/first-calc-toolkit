@@ -95,6 +95,6 @@ onMounted(async () => {
 }
 
 .welcome-content {
-  padding: 20px 0;
+  padding: 10px 0;
 }
 </style>

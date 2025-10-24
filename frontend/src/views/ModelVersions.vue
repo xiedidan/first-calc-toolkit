@@ -11,6 +11,26 @@
         </div>
       </template>
 
+      <!-- 搜索栏 -->
+      <div class="search-bar">
+        <el-input
+          v-model="searchText"
+          placeholder="搜索版本号、名称或描述"
+          clearable
+          style="width: 300px"
+          @clear="handleSearch"
+          @keyup.enter="handleSearch"
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+        <el-button type="primary" @click="handleSearch">
+          <el-icon><Search /></el-icon>
+          搜索
+        </el-button>
+      </div>
+
       <!-- 表格 -->
       <el-table :data="tableData" border stripe v-loading="loading">
         <el-table-column prop="version" label="版本号" width="120" />
@@ -23,11 +43,15 @@
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="创建时间" width="180" />
-        <el-table-column label="操作" width="350" fixed="right">
+        <el-table-column label="操作" width="500" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleEditStructure(row)">
               <el-icon><Edit /></el-icon>
               编辑结构
+            </el-button>
+            <el-button link type="info" @click="handleViewRules(row)">
+              <el-icon><Document /></el-icon>
+              查看规则
             </el-button>
             <el-button 
               link 
@@ -54,6 +78,19 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <!-- 分页 -->
+      <div class="pagination-container">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          :total="total"
+          layout="total, sizes, prev, pager, next, jumper"
+          @size-change="handleSizeChange"
+          @current-change="handlePageChange"
+        />
+      </div>
     </el-card>
 
     <!-- 新增/编辑对话框 -->
@@ -135,7 +172,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { Plus, Edit, Check, CopyDocument } from '@element-plus/icons-vue'
+import { Plus, Edit, Check, CopyDocument, Document, Search } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import {
   getModelVersions,
@@ -151,6 +188,10 @@ const router = useRouter()
 // 表格数据
 const tableData = ref<ModelVersion[]>([])
 const loading = ref(false)
+const total = ref(0)
+const currentPage = ref(1)
+const pageSize = ref(20)
+const searchText = ref('')
 
 // 对话框
 const dialogVisible = ref(false)
@@ -191,13 +232,34 @@ const copyRules: FormRules = {
 const fetchData = async () => {
   loading.value = true
   try {
-    const res = await getModelVersions({ limit: 100 })
+    const res = await getModelVersions({
+      skip: (currentPage.value - 1) * pageSize.value,
+      limit: pageSize.value,
+      search: searchText.value || undefined
+    })
     tableData.value = res.items
+    total.value = res.total
   } catch (error) {
     ElMessage.error('获取版本列表失败')
   } finally {
     loading.value = false
   }
+}
+
+// 搜索
+const handleSearch = () => {
+  currentPage.value = 1
+  fetchData()
+}
+
+// 分页变化
+const handlePageChange = () => {
+  fetchData()
+}
+
+const handleSizeChange = () => {
+  currentPage.value = 1
+  fetchData()
 }
 
 // 新增
@@ -230,6 +292,14 @@ const handleEdit = (row: ModelVersion) => {
 const handleEditStructure = (row: ModelVersion) => {
   router.push({
     name: 'ModelNodes',
+    params: { versionId: row.id }
+  })
+}
+
+// 查看规则
+const handleViewRules = (row: ModelVersion) => {
+  router.push({
+    name: 'ModelRules',
     params: { versionId: row.id }
   })
 }
@@ -366,12 +436,24 @@ onMounted(() => {
 
 <style scoped>
 .model-versions-container {
-  padding: 20px;
+  padding: 0;
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.search-bar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.pagination-container {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

@@ -27,35 +27,26 @@
         :tree-props="{ children: 'children', hasChildren: 'hasChildren' }"
         default-expand-all
       >
-        <el-table-column label="节点名称" min-width="350">
+        <el-table-column label="节点名称" width="460">
           <template #default="{ row }">
-            {{ row.name }} 
+            {{ row.name }}
+            <el-tag v-if="row.node_type === 'sequence'" type="primary" size="small" style="margin-left: 8px">序列</el-tag>
+            <el-tag v-else type="success" size="small" style="margin-left: 8px">维度</el-tag>
+            <el-tag v-if="row.is_leaf" type="warning" size="small" style="margin-left: 4px">末级</el-tag>
             <span class="sort-badge">
               ( Lvl.{{ getNodeLevel(row) }}, No.{{ row.sort_order }} )
             </span>
           </template>
         </el-table-column>
-        <el-table-column prop="code" label="节点编码" width="200" show-overflow-tooltip />
-        <el-table-column label="节点类型" width="100" align="center">
+        <el-table-column prop="code" label="节点编码" width="250" show-overflow-tooltip />
+        <el-table-column label="算法类型" width="120" align="center">
           <template #default="{ row }">
-            <el-tag v-if="row.node_type === 'sequence'" type="primary" size="small">序列</el-tag>
-            <el-tag v-else type="success" size="small">维度</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="末级维度" width="100" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.is_leaf" type="success" size="small">是</el-tag>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="算法类型" width="100" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.is_leaf && row.calc_type === 'statistical'" type="info" size="small">指标</el-tag>
+            <el-tag v-if="row.is_leaf && row.calc_type === 'statistical'" type="danger" size="small">指标</el-tag>
             <el-tag v-else-if="row.is_leaf && row.calc_type === 'calculational'" type="warning" size="small">目录</el-tag>
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="权重/单价" width="130" align="center">
+        <el-table-column label="权重/单价" width="150" align="center">
           <template #default="{ row }">
             <span v-if="row.is_leaf && row.weight">
               {{ formatWeight(row.weight, row.unit) }} {{ row.unit || '%' }}
@@ -63,7 +54,7 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="业务导向" min-width="180" show-overflow-tooltip>
+        <el-table-column label="业务导向" min-width="600" show-overflow-tooltip>
           <template #default="{ row }">
             {{ row.is_leaf && row.business_guide ? row.business_guide : '-' }}
           </template>
@@ -193,12 +184,23 @@
           />
         </el-form-item>
 
-        <el-form-item label="计算脚本" prop="script" v-if="form.is_leaf">
+        <el-form-item label="规则说明" prop="rule">
+          <el-input 
+            v-model="form.rule" 
+            type="textarea" 
+            :rows="5"
+            placeholder="请输入规则说明（自然语言描述，可选）"
+            maxlength="1000"
+            show-word-limit
+          />
+        </el-form-item>
+
+        <el-form-item label="计算脚本" prop="script">
           <el-input 
             v-model="form.script" 
             type="textarea" 
             :rows="8"
-            placeholder="请输入SQL或Python脚本"
+            placeholder="请输入SQL或Python脚本（可选）"
           />
           <div style="margin-top: 10px">
             <el-button size="small" @click="handleTestCode" :loading="testing">
@@ -291,6 +293,7 @@ const form = reactive({
   weight: undefined as number | undefined,
   unit: '%',
   business_guide: '',
+  rule: '',
   script: ''
 })
 
@@ -309,7 +312,7 @@ const rules = computed<FormRules>(() => {
     baseRules.calc_type = [{ required: true, message: '请选择算法类型', trigger: 'change' }]
     baseRules.weight = [{ required: true, message: '请输入权重/单价', trigger: 'blur' }]
     baseRules.unit = [{ required: true, message: '请输入单位', trigger: 'blur' }]
-    baseRules.script = [{ required: true, message: '请输入计算脚本', trigger: 'blur' }]
+    // script 不再是必填项，所有节点都可以选填
   }
   
   return baseRules
@@ -368,6 +371,7 @@ const handleAddRoot = () => {
     weight: undefined,
     unit: '%',
     business_guide: '',
+    rule: '',
     script: ''
   })
   dialogVisible.value = true
@@ -390,6 +394,7 @@ const handleAddChild = (row: ModelNode) => {
     weight: undefined,
     unit: '%',
     business_guide: '',
+    rule: '',
     script: ''
   })
   dialogVisible.value = true
@@ -437,6 +442,7 @@ const handleEdit = (row: ModelNode) => {
     weight: convertWeightForEdit(row.weight, row.unit),
     unit: row.unit || '%',
     business_guide: row.business_guide || '',
+    rule: row.rule || '',
     script: row.script || ''
   })
   dialogVisible.value = true
@@ -508,6 +514,7 @@ const handleSubmit = async () => {
         weight: convertWeightForSave(form.weight, form.unit),
         unit: form.unit,
         business_guide: form.business_guide,
+        rule: form.rule,
         script: form.script
       }
 
@@ -559,7 +566,7 @@ onMounted(() => {
 
 <style scoped>
 .model-nodes-container {
-  padding: 20px;
+  padding: 0;
 }
 
 .card-header {

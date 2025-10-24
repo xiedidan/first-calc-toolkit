@@ -24,6 +24,7 @@ class ModelNode(Base):
     unit = Column(String(20), default='%', comment="单位")
     business_guide = Column(Text, comment="业务导向")
     script = Column(Text, comment="SQL/Python脚本")
+    rule = Column(Text, comment="规则说明")
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

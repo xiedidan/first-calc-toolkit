@@ -19,6 +19,7 @@ class ModelNodeBase(BaseModel):
     unit: Optional[str] = Field('%', description="单位")
     business_guide: Optional[str] = Field(None, description="业务导向")
     script: Optional[str] = Field(None, description="SQL/Python脚本")
+    rule: Optional[str] = Field(None, description="规则说明")
 
 
 class ModelNodeCreate(ModelNodeBase):
@@ -39,6 +40,7 @@ class ModelNodeUpdate(BaseModel):
     unit: Optional[str] = Field(None, description="单位")
     business_guide: Optional[str] = Field(None, description="业务导向")
     script: Optional[str] = Field(None, description="SQL/Python脚本")
+    rule: Optional[str] = Field(None, description="规则说明")
 
 
 class ModelNodeResponse(ModelNodeBase):
