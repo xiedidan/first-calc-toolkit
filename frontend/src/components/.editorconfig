@@ -1,0 +1,4 @@
+# 防止IDE自动格式化破坏文件
+[DimensionSmartImport.vue]
+insert_final_newline = false
+trim_trailing_whitespace = false

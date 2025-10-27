@@ -144,6 +144,10 @@ const handleCommand = (command: string) => {
 <style scoped>
 .layout-container {
   height: 100vh;
+  transform: scale(0.75);
+  transform-origin: top left;
+  width: 133.33%; /* 100% / 0.75 */
+  height: 133.33vh; /* 100vh / 0.75 */
 }
 
 .layout-header {

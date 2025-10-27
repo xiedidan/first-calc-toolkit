@@ -293,3 +293,54 @@ def _load_children(db: Session, node: ModelNode):
     for child in children:
         _load_children(db, child)
         child.has_children = len(child.children) > 0
+
+
+@router.get("/version/{version_id}/leaf")
+def get_leaf_nodes(
+    version_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取指定版本的所有末级维度（叶子节点）"""
+    # 验证版本是否存在
+    version = db.query(ModelVersion).filter(ModelVersion.id == version_id).first()
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="模型版本不存在"
+        )
+    
+    # 查询所有末级节点
+    leaf_nodes = db.query(ModelNode).filter(
+        ModelNode.version_id == version_id,
+        ModelNode.is_leaf == True
+    ).order_by(ModelNode.sort_order).all()
+    
+    # 构建完整路径
+    result = []
+    for node in leaf_nodes:
+        full_path = _build_node_path(node, db)
+        result.append({
+            "id": node.id,
+            "name": node.name,
+            "code": node.code,
+            "full_path": full_path
+        })
+    
+    return result
+
+
+def _build_node_path(node: ModelNode, db: Session) -> str:
+    """构建节点的完整路径"""
+    path_parts = [node.name]
+    current = node
+    
+    while current.parent_id:
+        parent = db.query(ModelNode).filter(ModelNode.id == current.parent_id).first()
+        if parent:
+            path_parts.insert(0, parent.name)
+            current = parent
+        else:
+            break
+    
+    return " > ".join(path_parts)

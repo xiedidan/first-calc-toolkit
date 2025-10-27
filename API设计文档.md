@@ -211,6 +211,10 @@
 | `/dimension-items` | POST | 为维度添加收费项目 | 模型设计师/管理员 |
 | `/dimension-items/{id}` | DELETE | 删除维度关联的收费项目 | 模型设计师/管理员 |
 | `/dimension-items/import` | POST | 批量导入维度目录 | 模型设计师/管理员 |
+| `/dimension-items/smart-import/parse` | POST | 解析Excel文件（智能导入第一步） | 模型设计师/管理员 |
+| `/dimension-items/smart-import/extract-values` | POST | 提取维度值（智能导入第二步） | 模型设计师/管理员 |
+| `/dimension-items/smart-import/preview` | POST | 生成导入预览（智能导入第三步） | 模型设计师/管理员 |
+| `/dimension-items/smart-import/execute` | POST | 执行导入 | 模型设计师/管理员 |
 
 ### 3.1. 模型版本管理
 
@@ -366,6 +370,252 @@
 |---|---|---|---|
 | dimension_id | integer | 是 | 维度节点ID |
 | file | file | 是 | Excel文件 |
+
+### 3.4. 维度目录智能导入
+
+#### 3.4.1. 解析Excel文件（第一步：字段映射）
+- **接口**: `POST /dimension-items/smart-import/parse`
+- **描述**: 解析上传的Excel文件，返回列名和预览数据，用于字段映射
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| file | file | 是 | Excel文件 |
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| session_id | string | 导入会话ID，用于后续步骤 |
+| headers | array | Excel表头列表 |
+| preview_data | array | 预览数据（前10行） |
+| total_rows | integer | 总行数 |
+| suggested_mapping | object | 建议的字段映射 |
+
+**响应示例**:
+```json
+{
+  "session_id": "import_session_123456",
+  "headers": ["收费编码", "收费名称", "维度预案", "专家意见"],
+  "preview_data": [
+    ["CK001", "血常规", "检验项目", "4D"],
+    ["SS002", "阑尾切除术", "甲级手术D", "4D"]
+  ],
+  "total_rows": 500,
+  "suggested_mapping": {
+    "item_code": "收费编码",
+    "dimension_plan": "维度预案",
+    "expert_opinion": "专家意见"
+  }
+}
+```
+
+#### 3.4.2. 提取维度值（第二步：维度值映射）
+- **接口**: `POST /dimension-items/smart-import/extract-values`
+- **描述**: 根据字段映射提取维度预案和专家意见的唯一值，并提供智能匹配建议
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| session_id | string | 是 | 导入会话ID |
+| field_mapping | object | 是 | 字段映射关系 |
+| field_mapping.item_code | string | 是 | 收费编码列名 |
+| field_mapping.dimension_plan | string | 否 | 维度预案列名 |
+| field_mapping.expert_opinion | string | 否 | 专家意见列名 |
+| model_version_id | integer | 是 | 模型版本ID，用于获取系统维度列表 |
+
+**请求示例**:
+```json
+{
+  "session_id": "import_session_123456",
+  "field_mapping": {
+    "item_code": "收费编码",
+    "dimension_plan": "维度预案",
+    "expert_opinion": "专家意见"
+  },
+  "model_version_id": 1
+}
+```
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| unique_values | array | 唯一值列表 |
+| unique_values[].value | string | 唯一值 |
+| unique_values[].source | string | 来源（dimension_plan/expert_opinion） |
+| unique_values[].count | integer | 出现次数 |
+| unique_values[].suggested_dimensions | array | 建议的系统维度列表 |
+| system_dimensions | array | 系统维度列表 |
+| system_dimensions[].id | integer | 维度ID |
+| system_dimensions[].name | string | 维度名称 |
+| system_dimensions[].code | string | 维度编码 |
+| system_dimensions[].full_path | string | 维度完整路径 |
+
+**响应示例**:
+```json
+{
+  "unique_values": [
+    {
+      "value": "4D",
+      "source": "expert_opinion",
+      "count": 120,
+      "suggested_dimensions": [
+        {"id": 10, "name": "甲级手术D", "code": "JJSSD", "full_path": "医生序列 > 门诊 > 甲级手术D"},
+        {"id": 25, "name": "甲级手术D", "code": "JJSSD", "full_path": "医生序列 > 住院 > 甲级手术D"}
+      ]
+    },
+    {
+      "value": "检验项目",
+      "source": "dimension_plan",
+      "count": 80,
+      "suggested_dimensions": [
+        {"id": 45, "name": "检验", "code": "JY", "full_path": "医技序列 > 检验"}
+      ]
+    }
+  ],
+  "system_dimensions": [
+    {"id": 10, "name": "甲级手术D", "code": "JJSSD", "full_path": "医生序列 > 门诊 > 甲级手术D"},
+    {"id": 25, "name": "甲级手术D", "code": "JJSSD", "full_path": "医生序列 > 住院 > 甲级手术D"},
+    {"id": 45, "name": "检验", "code": "JY", "full_path": "医技序列 > 检验"}
+  ]
+}
+```
+
+#### 3.4.3. 生成导入预览（第三步：预览与确认）
+- **接口**: `POST /dimension-items/smart-import/preview`
+- **描述**: 根据维度值映射生成导入预览数据
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| session_id | string | 是 | 导入会话ID |
+| value_mapping | array | 是 | 维度值映射关系 |
+| value_mapping[].value | string | 是 | 唯一值 |
+| value_mapping[].source | string | 是 | 来源 |
+| value_mapping[].dimension_ids | array | 是 | 目标维度ID列表 |
+
+**请求示例**:
+```json
+{
+  "session_id": "import_session_123456",
+  "value_mapping": [
+    {
+      "value": "4D",
+      "source": "expert_opinion",
+      "dimension_ids": [10, 25]
+    },
+    {
+      "value": "检验项目",
+      "source": "dimension_plan",
+      "dimension_ids": [45]
+    }
+  ]
+}
+```
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| preview_items | array | 预览数据列表 |
+| preview_items[].item_code | string | 收费项目编码 |
+| preview_items[].item_name | string | 收费项目名称 |
+| preview_items[].dimension_id | integer | 目标维度ID |
+| preview_items[].dimension_name | string | 目标维度名称 |
+| preview_items[].dimension_path | string | 维度完整路径 |
+| preview_items[].source | string | 来源（dimension_plan/expert_opinion） |
+| preview_items[].source_value | string | 来源值 |
+| preview_items[].status | string | 状态（ok/warning/error） |
+| preview_items[].message | string | 提示信息 |
+| statistics | object | 统计信息 |
+| statistics.total | integer | 总数 |
+| statistics.ok | integer | 正常数量 |
+| statistics.warning | integer | 警告数量 |
+| statistics.error | integer | 错误数量 |
+
+**响应示例**:
+```json
+{
+  "preview_items": [
+    {
+      "item_code": "SS002",
+      "item_name": "阑尾切除术",
+      "dimension_id": 10,
+      "dimension_name": "甲级手术D",
+      "dimension_path": "医生序列 > 门诊 > 甲级手术D",
+      "source": "expert_opinion",
+      "source_value": "4D",
+      "status": "ok",
+      "message": ""
+    },
+    {
+      "item_code": "SS002",
+      "item_name": "阑尾切除术",
+      "dimension_id": 25,
+      "dimension_name": "甲级手术D",
+      "dimension_path": "医生序列 > 住院 > 甲级手术D",
+      "source": "expert_opinion",
+      "source_value": "4D",
+      "status": "warning",
+      "message": "该收费项目已存在于此维度中"
+    },
+    {
+      "item_code": "CK999",
+      "item_name": "",
+      "dimension_id": 45,
+      "dimension_name": "检验",
+      "dimension_path": "医技序列 > 检验",
+      "source": "dimension_plan",
+      "source_value": "检验项目",
+      "status": "warning",
+      "message": "收费项目编码在系统中不存在"
+    }
+  ],
+  "statistics": {
+    "total": 500,
+    "ok": 450,
+    "warning": 48,
+    "error": 2
+  }
+}
+```
+
+#### 3.4.4. 执行导入
+- **接口**: `POST /dimension-items/smart-import/execute`
+- **描述**: 执行批量导入操作
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| session_id | string | 是 | 导入会话ID |
+| confirmed_items | array | 否 | 用户确认的导入项（如果为空则导入所有预览项） |
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| success | boolean | 是否成功 |
+| report | object | 导入报告 |
+| report.success_count | integer | 成功导入数量 |
+| report.skipped_count | integer | 跳过数量 |
+| report.error_count | integer | 错误数量 |
+| report.errors | array | 错误详情列表 |
+
+**响应示例**:
+```json
+{
+  "success": true,
+  "report": {
+    "success_count": 450,
+    "skipped_count": 48,
+    "error_count": 2,
+    "errors": [
+      {
+        "item_code": "CK999",
+        "dimension_id": 45,
+        "reason": "收费项目编码在系统中不存在"
+      }
+    ]
+  }
+}
+```
 
 ---
 
