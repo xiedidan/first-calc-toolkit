@@ -7,7 +7,20 @@ from alembic import context
 
 # Import your models here
 from app.database import Base
-from app.models import user, role, permission  # noqa
+# Import all models to ensure they are registered with SQLAlchemy
+from app.models import (  # noqa
+    user,
+    role,
+    permission,
+    department,
+    charge_item,
+    dimension_item_mapping,
+    model_version,
+    model_node,
+    calculation_workflow,
+    calculation_step,
+    calculation_step_log,
+)
 
 # this is the Alembic Config object
 config = context.config

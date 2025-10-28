@@ -21,3 +21,4 @@ class ModelVersion(Base):
 
     # 关系
     nodes = relationship("ModelNode", back_populates="version", cascade="all, delete-orphan")
+    workflows = relationship("CalculationWorkflow", back_populates="version", cascade="all, delete-orphan")

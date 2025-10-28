@@ -26,6 +26,16 @@ from .dimension_item import (
     DimensionItemMappingCreate,
     DimensionItemList,
 )
+from .data_source import (
+    DataSourceCreate,
+    DataSourceUpdate,
+    DataSourceResponse,
+    DataSourceListItem,
+    DataSourceTestResult,
+    DataSourcePoolStatus,
+    DBType,
+    ConnectionStatus,
+)
 
 __all__ = [
     "User",
@@ -50,4 +60,12 @@ __all__ = [
     "DimensionItemMapping",
     "DimensionItemMappingCreate",
     "DimensionItemList",
+    "DataSourceCreate",
+    "DataSourceUpdate",
+    "DataSourceResponse",
+    "DataSourceListItem",
+    "DataSourceTestResult",
+    "DataSourcePoolStatus",
+    "DBType",
+    "ConnectionStatus",
 ]

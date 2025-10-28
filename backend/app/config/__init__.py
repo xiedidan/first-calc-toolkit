@@ -28,12 +28,16 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str
     CELERY_RESULT_BACKEND: str
     
+    # 加密配置
+    ENCRYPTION_KEY: Optional[str] = None
+    
     # 日志配置
     LOG_LEVEL: str = "INFO"
     
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # 忽略额外的字段
 
 
 # 创建全局配置实例

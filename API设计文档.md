@@ -1250,7 +1250,295 @@
 
 ---
 
-## 9. 附录
+## 9. 数据源管理服务 API - 新增
+
+### API汇总表
+
+| 接口路径 | 方法 | 描述 | 权限要求 |
+|---|---|---|---|
+| `/data-sources` | GET | 获取数据源列表 | 系统管理员 |
+| `/data-sources` | POST | 创建新数据源 | 系统管理员 |
+| `/data-sources/{id}` | GET | 获取数据源详情 | 系统管理员 |
+| `/data-sources/{id}` | PUT | 更新数据源信息 | 系统管理员 |
+| `/data-sources/{id}` | DELETE | 删除数据源 | 系统管理员 |
+| `/data-sources/{id}/test` | POST | 测试数据源连接 | 系统管理员 |
+| `/data-sources/{id}/toggle` | PUT | 切换数据源启用状态 | 系统管理员 |
+| `/data-sources/{id}/set-default` | PUT | 设置为默认数据源 | 系统管理员 |
+| `/data-sources/{id}/pool-status` | GET | 获取连接池状态 | 系统管理员 |
+
+### 9.1. 数据源管理
+
+#### 9.1.1. 获取数据源列表
+- **接口**: `GET /data-sources`
+- **描述**: 获取数据源列表
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| page | integer | 否 | 页码，默认1 |
+| size | integer | 否 | 每页数量，默认10 |
+| keyword | string | 否 | 搜索关键词（数据源名称） |
+| db_type | string | 否 | 数据库类型筛选 |
+| is_enabled | boolean | 否 | 启用状态筛选 |
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| total | integer | 总数量 |
+| items | array | 数据源列表 |
+| items[].id | integer | 数据源ID |
+| items[].name | string | 数据源名称 |
+| items[].db_type | string | 数据库类型 |
+| items[].host | string | 主机地址 |
+| items[].port | integer | 端口号 |
+| items[].database_name | string | 数据库名称 |
+| items[].username | string | 用户名 |
+| items[].is_default | boolean | 是否默认 |
+| items[].is_enabled | boolean | 是否启用 |
+| items[].connection_status | string | 连接状态(online/offline/error) |
+| items[].description | string | 描述 |
+| items[].created_at | string | 创建时间 |
+| items[].updated_at | string | 更新时间 |
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "total": 3,
+    "items": [
+      {
+        "id": 1,
+        "name": "HIS业务数据库",
+        "db_type": "postgresql",
+        "host": "192.168.1.100",
+        "port": 5432,
+        "database_name": "his_db",
+        "username": "his_user",
+        "is_default": true,
+        "is_enabled": true,
+        "connection_status": "online",
+        "description": "医院HIS系统业务数据库",
+        "created_at": "2025-10-27T10:00:00",
+        "updated_at": "2025-10-27T10:00:00"
+      }
+    ]
+  }
+}
+```
+
+**注意**: 密码字段不在列表中返回
+
+#### 9.1.2. 创建数据源
+- **接口**: `POST /data-sources`
+- **描述**: 创建新数据源
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| name | string | 是 | 数据源名称 |
+| db_type | string | 是 | 数据库类型(postgresql/mysql/sqlserver/oracle) |
+| host | string | 是 | 主机地址 |
+| port | integer | 是 | 端口号 |
+| database_name | string | 是 | 数据库名称 |
+| username | string | 是 | 用户名 |
+| password | string | 是 | 密码 |
+| schema_name | string | 否 | Schema名称 |
+| connection_params | object | 否 | 额外连接参数 |
+| is_default | boolean | 否 | 是否默认，默认false |
+| is_enabled | boolean | 否 | 是否启用，默认true |
+| description | string | 否 | 描述 |
+| pool_size_min | integer | 否 | 最小连接数，默认2 |
+| pool_size_max | integer | 否 | 最大连接数，默认10 |
+| pool_timeout | integer | 否 | 连接超时(秒)，默认30 |
+
+**请求示例**:
+```json
+{
+  "name": "HIS业务数据库",
+  "db_type": "postgresql",
+  "host": "192.168.1.100",
+  "port": 5432,
+  "database_name": "his_db",
+  "username": "his_user",
+  "password": "his_password_123",
+  "schema_name": "public",
+  "is_default": true,
+  "is_enabled": true,
+  "description": "医院HIS系统业务数据库",
+  "pool_size_min": 2,
+  "pool_size_max": 10,
+  "pool_timeout": 30
+}
+```
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| id | integer | 数据源ID |
+| name | string | 数据源名称 |
+| db_type | string | 数据库类型 |
+| created_at | string | 创建时间 |
+
+#### 9.1.3. 获取数据源详情
+- **接口**: `GET /data-sources/{id}`
+- **描述**: 获取数据源详情
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| id | integer | 数据源ID |
+| name | string | 数据源名称 |
+| db_type | string | 数据库类型 |
+| host | string | 主机地址 |
+| port | integer | 端口号 |
+| database_name | string | 数据库名称 |
+| username | string | 用户名 |
+| password | string | 密码（脱敏显示为***） |
+| schema_name | string | Schema名称 |
+| connection_params | object | 连接参数 |
+| is_default | boolean | 是否默认 |
+| is_enabled | boolean | 是否启用 |
+| description | string | 描述 |
+| pool_size_min | integer | 最小连接数 |
+| pool_size_max | integer | 最大连接数 |
+| pool_timeout | integer | 连接超时 |
+| connection_status | string | 连接状态 |
+| created_at | string | 创建时间 |
+| updated_at | string | 更新时间 |
+
+#### 9.1.4. 更新数据源
+- **接口**: `PUT /data-sources/{id}`
+- **描述**: 更新数据源信息
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| name | string | 否 | 数据源名称 |
+| host | string | 否 | 主机地址 |
+| port | integer | 否 | 端口号 |
+| database_name | string | 否 | 数据库名称 |
+| username | string | 否 | 用户名 |
+| password | string | 否 | 密码（如果不修改则不传） |
+| schema_name | string | 否 | Schema名称 |
+| connection_params | object | 否 | 连接参数 |
+| description | string | 否 | 描述 |
+| pool_size_min | integer | 否 | 最小连接数 |
+| pool_size_max | integer | 否 | 最大连接数 |
+| pool_timeout | integer | 否 | 连接超时 |
+
+**注意**: 
+- 数据库类型（db_type）创建后不可修改
+- 更新配置后，系统会重新创建连接池
+
+#### 9.1.5. 删除数据源
+- **接口**: `DELETE /data-sources/{id}`
+- **描述**: 删除数据源
+
+**注意**: 
+- 如果数据源被计算步骤引用，将无法删除
+- 删除操作会关闭并清理该数据源的连接池
+
+#### 9.1.6. 测试数据源连接
+- **接口**: `POST /data-sources/{id}/test`
+- **描述**: 测试数据源连接
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| success | boolean | 是否成功 |
+| message | string | 测试结果消息 |
+| duration_ms | integer | 连接耗时(毫秒) |
+| error | string | 错误信息（失败时） |
+
+**响应示例（成功）**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "success": true,
+    "message": "连接成功",
+    "duration_ms": 125
+  }
+}
+```
+
+**响应示例（失败）**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "success": false,
+    "message": "连接失败",
+    "duration_ms": 5000,
+    "error": "连接超时: could not connect to server"
+  }
+}
+```
+
+#### 9.1.7. 切换数据源启用状态
+- **接口**: `PUT /data-sources/{id}/toggle`
+- **描述**: 切换数据源启用状态
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| is_enabled | boolean | 更新后的启用状态 |
+
+**注意**: 
+- 禁用数据源会关闭其连接池
+- 启用数据源会重新创建连接池
+
+#### 9.1.8. 设置为默认数据源
+- **接口**: `PUT /data-sources/{id}/set-default`
+- **描述**: 设置为默认数据源
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| success | boolean | 是否成功 |
+| message | string | 消息 |
+
+**注意**: 
+- 设置新的默认数据源会自动取消原默认数据源的默认标记
+- 只能有一个数据源标记为默认
+
+#### 9.1.9. 获取连接池状态
+- **接口**: `GET /data-sources/{id}/pool-status`
+- **描述**: 获取数据源连接池状态
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| pool_size | integer | 连接池大小 |
+| active_connections | integer | 活跃连接数 |
+| idle_connections | integer | 空闲连接数 |
+| waiting_requests | integer | 等待连接的请求数 |
+| total_connections_created | integer | 累计创建的连接数 |
+| total_connections_closed | integer | 累计关闭的连接数 |
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "pool_size": 10,
+    "active_connections": 3,
+    "idle_connections": 7,
+    "waiting_requests": 0,
+    "total_connections_created": 15,
+    "total_connections_closed": 5
+  }
+}
+```
+
+---
+
+## 10. 附录
 
 ### 9.1. 数据字典
 
@@ -1282,6 +1570,21 @@
 | inactive | 未激活 |
 | locked | 锁定 |
 
+#### 9.1.5. 数据库类型 (db_type) - 新增
+| 值 | 说明 |
+|---|---|
+| postgresql | PostgreSQL数据库 |
+| mysql | MySQL数据库 |
+| sqlserver | SQL Server数据库 |
+| oracle | Oracle数据库 |
+
+#### 9.1.6. 数据源连接状态 (connection_status) - 新增
+| 值 | 说明 |
+|---|---|
+| online | 在线（连接正常） |
+| offline | 离线（未启用或连接池未创建） |
+| error | 错误（连接失败） |
+
 ### 9.2. 认证说明
 
 所有需要认证的API都需要在请求头中携带JWT Token：
@@ -1308,3 +1611,517 @@ Token有效期为24小时，过期后需要重新登录获取。
     "items": []
   }
 }
+
+-
+--
+
+## 8. 计算流程管理服务 API - 新增
+
+### API汇总表
+
+| 接口路径 | 方法 | 描述 | 权限要求 |
+|---|---|---|---|
+| `/calculation-workflows` | GET | 获取计算流程列表 | 模型设计师/管理员 |
+| `/calculation-workflows` | POST | 创建新计算流程 | 模型设计师/管理员 |
+| `/calculation-workflows/{id}` | GET | 获取计算流程详情 | 模型设计师/管理员 |
+| `/calculation-workflows/{id}` | PUT | 更新计算流程信息 | 模型设计师/管理员 |
+| `/calculation-workflows/{id}` | DELETE | 删除计算流程 | 模型设计师/管理员 |
+| `/calculation-workflows/{id}/copy` | POST | 复制计算流程 | 模型设计师/管理员 |
+| `/calculation-steps` | GET | 获取计算步骤列表 | 模型设计师/管理员 |
+| `/calculation-steps` | POST | 创建新计算步骤 | 模型设计师/管理员 |
+| `/calculation-steps/{id}` | GET | 获取计算步骤详情 | 模型设计师/管理员 |
+| `/calculation-steps/{id}` | PUT | 更新计算步骤信息 | 模型设计师/管理员 |
+| `/calculation-steps/{id}` | DELETE | 删除计算步骤 | 模型设计师/管理员 |
+| `/calculation-steps/{id}/move-up` | POST | 上移计算步骤 | 模型设计师/管理员 |
+| `/calculation-steps/{id}/move-down` | POST | 下移计算步骤 | 模型设计师/管理员 |
+| `/calculation-steps/{id}/test` | POST | 测试计算步骤代码 | 模型设计师/管理员 |
+| `/calculation-workflows/migrate` | POST | 执行数据迁移 | 系统管理员 |
+
+### 8.1. 计算流程管理
+
+#### 8.1.1. 获取计算流程列表
+- **接口**: `GET /calculation-workflows`
+- **描述**: 获取计算流程列表
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| version_id | integer | 否 | 模型版本ID筛选 |
+| page | integer | 否 | 页码，默认1 |
+| size | integer | 否 | 每页数量，默认10 |
+| keyword | string | 否 | 搜索关键词（流程名称） |
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| total | integer | 总数量 |
+| items | array | 计算流程列表 |
+| items[].id | integer | 流程ID |
+| items[].version_id | integer | 模型版本ID |
+| items[].version_name | string | 模型版本名称 |
+| items[].name | string | 流程名称 |
+| items[].description | string | 流程描述 |
+| items[].step_count | integer | 步骤数量 |
+| items[].is_active | boolean | 是否启用 |
+| items[].created_at | string | 创建时间 |
+| items[].updated_at | string | 更新时间 |
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "total": 5,
+    "items": [
+      {
+        "id": 1,
+        "version_id": 1,
+        "version_name": "2025年标准版-v1",
+        "name": "默认计算流程",
+        "description": "从模型节点迁移的默认计算流程",
+        "step_count": 15,
+        "is_active": true,
+        "created_at": "2025-10-27T10:00:00",
+        "updated_at": "2025-10-27T10:00:00"
+      }
+    ]
+  }
+}
+```
+
+#### 8.1.2. 创建计算流程
+- **接口**: `POST /calculation-workflows`
+- **描述**: 创建新计算流程
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| version_id | integer | 是 | 模型版本ID |
+| name | string | 是 | 流程名称 |
+| description | string | 否 | 流程描述 |
+| is_active | boolean | 否 | 是否启用，默认true |
+
+**请求示例**:
+```json
+{
+  "version_id": 1,
+  "name": "2025年Q1计算流程",
+  "description": "针对2025年第一季度的计算流程",
+  "is_active": true
+}
+```
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| id | integer | 流程ID |
+| version_id | integer | 模型版本ID |
+| name | string | 流程名称 |
+| description | string | 流程描述 |
+| is_active | boolean | 是否启用 |
+| created_at | string | 创建时间 |
+| updated_at | string | 更新时间 |
+
+#### 8.1.3. 获取计算流程详情
+- **接口**: `GET /calculation-workflows/{id}`
+- **描述**: 获取计算流程详情
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| id | integer | 流程ID |
+| version_id | integer | 模型版本ID |
+| version_name | string | 模型版本名称 |
+| name | string | 流程名称 |
+| description | string | 流程描述 |
+| is_active | boolean | 是否启用 |
+| step_count | integer | 步骤数量 |
+| created_at | string | 创建时间 |
+| updated_at | string | 更新时间 |
+
+#### 8.1.4. 更新计算流程
+- **接口**: `PUT /calculation-workflows/{id}`
+- **描述**: 更新计算流程信息
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| name | string | 否 | 流程名称 |
+| description | string | 否 | 流程描述 |
+| is_active | boolean | 否 | 是否启用 |
+
+#### 8.1.5. 删除计算流程
+- **接口**: `DELETE /calculation-workflows/{id}`
+- **描述**: 删除计算流程（级联删除所有步骤）
+
+**注意**: 删除操作不可恢复，请谨慎操作
+
+#### 8.1.6. 复制计算流程
+- **接口**: `POST /calculation-workflows/{id}/copy`
+- **描述**: 复制计算流程（包括所有步骤）
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| name | string | 是 | 新流程名称 |
+| description | string | 否 | 新流程描述 |
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| id | integer | 新流程ID |
+| name | string | 新流程名称 |
+| step_count | integer | 复制的步骤数量 |
+
+### 8.2. 计算步骤管理
+
+#### 8.2.1. 获取计算步骤列表
+- **接口**: `GET /calculation-steps?workflow_id={id}`
+- **描述**: 获取指定流程的计算步骤列表
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| workflow_id | integer | 是 | 计算流程ID |
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| total | integer | 总数量 |
+| items | array | 计算步骤列表 |
+| items[].id | integer | 步骤ID |
+| items[].workflow_id | integer | 计算流程ID |
+| items[].name | string | 步骤名称 |
+| items[].description | string | 步骤描述 |
+| items[].code_type | string | 代码类型(python/sql) |
+| items[].code_content | string | 代码内容 |
+| items[].data_source_id | integer | 数据源ID |
+| items[].data_source_name | string | 数据源名称 |
+| items[].sort_order | number | 执行顺序 |
+| items[].is_enabled | boolean | 是否启用 |
+| items[].created_at | string | 创建时间 |
+| items[].updated_at | string | 更新时间 |
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "total": 3,
+    "items": [
+      {
+        "id": 1,
+        "workflow_id": 1,
+        "name": "医生序列 > 门诊 > 甲级手术D",
+        "description": "计算门诊甲级手术D的工作量",
+        "code_type": "sql",
+        "code_content": "SELECT department_id, SUM(amount) as total FROM ...",
+        "data_source_id": 1,
+        "data_source_name": "HIS业务数据库",
+        "sort_order": 1.0,
+        "is_enabled": true,
+        "created_at": "2025-10-27T10:00:00",
+        "updated_at": "2025-10-27T10:00:00"
+      }
+    ]
+  }
+}
+```
+
+#### 8.2.2. 创建计算步骤
+- **接口**: `POST /calculation-steps`
+- **描述**: 创建新计算步骤
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| workflow_id | integer | 是 | 计算流程ID |
+| name | string | 是 | 步骤名称 |
+| description | string | 否 | 步骤描述 |
+| code_type | string | 是 | 代码类型(python/sql) |
+| code_content | string | 是 | 代码内容 |
+| data_source_id | integer | 否 | 数据源ID（SQL类型时使用，为空则使用默认数据源） |
+| sort_order | number | 否 | 执行顺序，默认为最大值+1 |
+| is_enabled | boolean | 否 | 是否启用，默认true |
+
+**请求示例**:
+```json
+{
+  "workflow_id": 1,
+  "name": "计算门诊工作量",
+  "description": "统计门诊的工作量数据",
+  "code_type": "sql",
+  "code_content": "SELECT department_id, COUNT(*) as count FROM outpatient WHERE date = '{current_year_month}' GROUP BY department_id",
+  "data_source_id": 1,
+  "is_enabled": true
+}
+```
+
+**注意**: 
+- 当 `code_type='sql'` 时，建议指定 `data_source_id`
+- 如果未指定 `data_source_id`，系统将使用标记为默认的数据源
+- 当 `code_type='python'` 时，`data_source_id` 可以为空
+
+#### 8.2.3. 获取计算步骤详情
+- **接口**: `GET /calculation-steps/{id}`
+- **描述**: 获取计算步骤详情
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| id | integer | 步骤ID |
+| workflow_id | integer | 计算流程ID |
+| workflow_name | string | 计算流程名称 |
+| name | string | 步骤名称 |
+| description | string | 步骤描述 |
+| code_type | string | 代码类型 |
+| code_content | string | 代码内容 |
+| data_source_id | integer | 数据源ID |
+| data_source_name | string | 数据源名称 |
+| sort_order | number | 执行顺序 |
+| is_enabled | boolean | 是否启用 |
+| created_at | string | 创建时间 |
+| updated_at | string | 更新时间 |
+
+#### 8.2.4. 更新计算步骤
+- **接口**: `PUT /calculation-steps/{id}`
+- **描述**: 更新计算步骤信息
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| name | string | 否 | 步骤名称 |
+| description | string | 否 | 步骤描述 |
+| code_type | string | 否 | 代码类型 |
+| data_source_id | integer | 否 | 数据源ID |
+| code_content | string | 否 | 代码内容 |
+| is_enabled | boolean | 否 | 是否启用 |
+
+#### 8.2.5. 删除计算步骤
+- **接口**: `DELETE /calculation-steps/{id}`
+- **描述**: 删除计算步骤
+
+#### 8.2.6. 上移计算步骤
+- **接口**: `POST /calculation-steps/{id}/move-up`
+- **描述**: 将计算步骤向上移动一位
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| success | boolean | 是否成功 |
+| message | string | 消息 |
+
+#### 8.2.7. 下移计算步骤
+- **接口**: `POST /calculation-steps/{id}/move-down`
+- **描述**: 将计算步骤向下移动一位
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| success | boolean | 是否成功 |
+| message | string | 消息 |
+
+#### 8.2.8. 测试计算步骤代码
+- **接口**: `POST /calculation-steps/{id}/test`
+- **描述**: 测试计算步骤代码
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| test_params | object | 否 | 测试参数 |
+| test_params.current_year_month | string | 否 | 当期年月 |
+| test_params.department_id | integer | 否 | 科室ID |
+| test_params.department_code | string | 否 | 科室代码 |
+
+**请求示例**:
+```json
+{
+  "test_params": {
+    "current_year_month": "2025-10",
+    "department_id": 1,
+    "department_code": "KS001"
+  }
+}
+```
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| success | boolean | 是否成功 |
+| duration_ms | integer | 执行耗时(毫秒) |
+| result | object | 执行结果 |
+| error | string | 错误信息 |
+
+**响应示例（成功）**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "success": true,
+    "duration_ms": 125,
+    "result": {
+      "rows": [
+        {"department_id": 1, "count": 150},
+        {"department_id": 2, "count": 200}
+      ],
+      "row_count": 2
+    }
+  }
+}
+```
+
+**响应示例（失败）**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "success": false,
+    "duration_ms": 50,
+    "error": "SQL语法错误: near 'FORM': syntax error"
+  }
+}
+```
+
+### 8.3. 数据迁移
+
+#### 8.3.1. 执行数据迁移
+- **接口**: `POST /calculation-workflows/migrate`
+- **描述**: 将模型节点中的代码迁移到计算流程
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| version_ids | array | 否 | 要迁移的模型版本ID列表，为空则迁移所有版本 |
+| preview_only | boolean | 否 | 是否仅预览，不实际执行，默认false |
+
+**请求示例**:
+```json
+{
+  "version_ids": [1, 2],
+  "preview_only": false
+}
+```
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| success | boolean | 是否成功 |
+| report | object | 迁移报告 |
+| report.total_versions | integer | 总版本数 |
+| report.migrated_versions | integer | 已迁移版本数 |
+| report.total_nodes | integer | 总节点数 |
+| report.migrated_steps | integer | 已迁移步骤数 |
+| report.skipped_nodes | integer | 跳过的节点数（无代码） |
+| report.failed_nodes | integer | 失败的节点数 |
+| report.details | array | 详细信息 |
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "success": true,
+    "report": {
+      "total_versions": 2,
+      "migrated_versions": 2,
+      "total_nodes": 50,
+      "migrated_steps": 30,
+      "skipped_nodes": 20,
+      "failed_nodes": 0,
+      "details": [
+        {
+          "version_id": 1,
+          "version_name": "2025年标准版-v1",
+          "workflow_id": 1,
+          "workflow_name": "2025年标准版-v1 - 默认计算流程",
+          "migrated_steps": 15,
+          "skipped_nodes": 10
+        }
+      ]
+    }
+  }
+}
+```
+
+---
+
+## 9. API变更说明 (V1.1)
+
+### 9.1. 已弃用的API
+
+#### 9.1.1. 模型节点代码相关
+- **接口**: `POST /model-nodes/{id}/test-code`
+- **状态**: 已弃用（Deprecated）
+- **替代方案**: 使用 `POST /calculation-steps/{id}/test` 测试计算步骤代码
+- **说明**: 模型节点不再包含代码字段，代码测试功能已迁移到计算步骤
+
+### 9.2. 修改的API
+
+#### 9.2.1. 创建计算任务
+- **接口**: `POST /calculation/tasks`
+- **变更**: 新增 `workflow_id` 参数（可选）
+- **说明**: 
+  - 如果指定 `workflow_id`，系统将执行该计算流程中的步骤
+  - 如果未指定 `workflow_id`，系统将尝试使用模型节点中的代码（兼容模式）
+  - 建议始终指定 `workflow_id`，兼容模式将在未来版本中移除
+
+**新的请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| model_version_id | integer | 是 | 模型版本ID |
+| workflow_id | integer | 否 | 计算流程ID（推荐） |
+| department_ids | array | 否 | 科室ID列表 |
+| period | string | 是 | 计算周期(YYYY-MM) |
+| description | string | 否 | 任务描述 |
+
+#### 9.2.2. 获取模型节点
+- **接口**: `GET /model-nodes`
+- **变更**: `script` 字段标记为已弃用
+- **说明**: 
+  - API继续返回 `script` 字段，但前端不应再使用
+  - 未来版本可能移除该字段
+
+### 9.3. 新增的API
+
+#### 9.3.1. 计算流程管理
+- `GET /calculation-workflows` - 获取计算流程列表
+- `POST /calculation-workflows` - 创建计算流程
+- `GET /calculation-workflows/{id}` - 获取计算流程详情
+- `PUT /calculation-workflows/{id}` - 更新计算流程
+- `DELETE /calculation-workflows/{id}` - 删除计算流程
+- `POST /calculation-workflows/{id}/copy` - 复制计算流程
+
+#### 9.3.2. 计算步骤管理
+- `GET /calculation-steps` - 获取计算步骤列表
+- `POST /calculation-steps` - 创建计算步骤
+- `GET /calculation-steps/{id}` - 获取计算步骤详情
+- `PUT /calculation-steps/{id}` - 更新计算步骤
+- `DELETE /calculation-steps/{id}` - 删除计算步骤
+- `POST /calculation-steps/{id}/move-up` - 上移计算步骤
+- `POST /calculation-steps/{id}/move-down` - 下移计算步骤
+- `POST /calculation-steps/{id}/test` - 测试计算步骤代码
+
+#### 9.3.3. 数据迁移
+- `POST /calculation-workflows/migrate` - 执行数据迁移
+
+### 9.4. 兼容性说明
+
+#### 9.4.1. 过渡期
+- 过渡期为6个月（2025-10-27 至 2026-04-27）
+- 过渡期内，系统同时支持新旧两种方式
+- 建议客户端尽快迁移到新API
+
+#### 9.4.2. 兼容模式
+- 兼容模式可通过系统配置启用/禁用
+- 默认启用兼容模式
+- 完成数据迁移后，建议禁用兼容模式
+
+#### 9.4.3. 移除计划
+- 2026-04-27 之后的版本将移除兼容模式
+- 2026-04-27 之后的版本将移除 `model_nodes.script` 字段
+- 2026-04-27 之后的版本将移除已弃用的API

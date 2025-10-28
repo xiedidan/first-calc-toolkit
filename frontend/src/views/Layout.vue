@@ -33,7 +33,7 @@
       <el-aside width="220px" class="layout-aside">
         <el-menu
           :default-active="activeMenu"
-          :default-openeds="['model', 'base-data', 'system']"
+          :default-openeds="['model', 'base-data']"
           router
           class="layout-menu"
         >
@@ -41,6 +41,24 @@
           <el-menu-item index="/dashboard">
             <el-icon><HomeFilled /></el-icon>
             <span>首页</span>
+          </el-menu-item>
+
+          <!-- 数据模型管理 (未实现) -->
+          <el-menu-item index="/data-model" disabled>
+            <el-icon><Grid /></el-icon>
+            <span>数据模型管理</span>
+          </el-menu-item>
+
+          <!-- 数据质量报告 (未实现) -->
+          <el-menu-item index="/data-quality" disabled>
+            <el-icon><DocumentChecked /></el-icon>
+            <span>数据质量报告</span>
+          </el-menu-item>
+
+          <!-- 智能分类分级 (未实现) -->
+          <el-menu-item index="/intelligent-classification" disabled>
+            <el-icon><Operation /></el-icon>
+            <span>智能分类分级</span>
           </el-menu-item>
 
           <!-- 评估模型管理 -->
@@ -51,6 +69,7 @@
             </template>
             <el-menu-item index="/model-versions">模型版本管理</el-menu-item>
             <el-menu-item index="/dimension-items">维度目录管理</el-menu-item>
+            <el-menu-item index="/calculation-workflows">计算流程管理</el-menu-item>
           </el-sub-menu>
 
           <!-- 计算任务管理 (未实现) -->
@@ -65,6 +84,24 @@
             <span>报表查询展示</span>
           </el-menu-item>
 
+          <!-- ADV自动建模 (未实现) -->
+          <el-menu-item index="/adv-modeling" disabled>
+            <el-icon><MagicStick /></el-icon>
+            <span>ADV自动建模</span>
+          </el-menu-item>
+
+          <!-- 智能问数系统 (未实现) -->
+          <el-menu-item index="/intelligent-query" disabled>
+            <el-icon><ChatDotRound /></el-icon>
+            <span>智能问数系统</span>
+          </el-menu-item>
+
+          <!-- 运营分析报告 (未实现) -->
+          <el-menu-item index="/operation-analysis" disabled>
+            <el-icon><TrendCharts /></el-icon>
+            <span>运营分析报告</span>
+          </el-menu-item>
+
           <!-- 基础数据管理 -->
           <el-sub-menu index="base-data">
             <template #title>
@@ -75,13 +112,19 @@
             <el-menu-item index="/charge-items">收费项目管理</el-menu-item>
           </el-sub-menu>
 
+          <!-- 数据源管理 -->
+          <el-menu-item index="/data-sources">
+            <el-icon><Connection /></el-icon>
+            <span>数据源管理</span>
+          </el-menu-item>
+
           <!-- 系统设置 -->
           <el-sub-menu index="system">
             <template #title>
               <el-icon><Setting /></el-icon>
               <span>系统设置</span>
             </template>
-            <el-menu-item index="/settings" disabled>参数管理</el-menu-item>
+            <el-menu-item index="/system-settings">参数管理</el-menu-item>
             <el-menu-item index="/users">用户管理</el-menu-item>
           </el-sub-menu>
         </el-menu>
@@ -102,11 +145,18 @@ import {
   User, 
   ArrowDown, 
   SwitchButton, 
-  HomeFilled, 
+  HomeFilled,
+  Grid,
+  DocumentChecked,
+  Operation,
   Document, 
   Clock, 
-  DataAnalysis, 
+  DataAnalysis,
+  MagicStick,
+  ChatDotRound,
+  TrendCharts,
   FolderOpened, 
+  Connection,
   Setting 
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
@@ -123,6 +173,12 @@ const activeMenu = computed(() => {
   }
   if (path.startsWith('/dimension-items')) {
     return '/dimension-items'
+  }
+  if (path.startsWith('/calculation-workflows')) {
+    return '/calculation-workflows'
+  }
+  if (path.startsWith('/data-sources')) {
+    return '/data-sources'
   }
   return path
 })

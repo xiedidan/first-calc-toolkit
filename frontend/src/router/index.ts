@@ -63,6 +63,24 @@ const routes: RouteRecordRaw[] = [
         name: 'ModelRules',
         component: () => import('@/views/ModelRules.vue'),
         meta: { title: '模型规则展示' }
+      },
+      {
+        path: '/calculation-workflows',
+        name: 'CalculationWorkflows',
+        component: () => import('@/views/CalculationWorkflows.vue'),
+        meta: { title: '计算流程管理' }
+      },
+      {
+        path: '/data-sources',
+        name: 'DataSources',
+        component: () => import('@/views/DataSources.vue'),
+        meta: { title: '数据源管理' }
+      },
+      {
+        path: '/system-settings',
+        name: 'SystemSettings',
+        component: () => import('@/views/SystemSettings.vue'),
+        meta: { title: '系统设置' }
       }
     ]
   }
