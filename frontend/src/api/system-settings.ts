@@ -1,9 +1,9 @@
 /**
  * 系统设置API
  */
-import axios from 'axios';
+import request from '@/utils/request';
 
-const API_BASE = '/api/v1/system/settings';
+const API_BASE = '/system/settings';
 
 export interface SystemSettings {
   current_period: string | null;
@@ -20,8 +20,8 @@ export interface SystemSettingsUpdate {
  * 获取系统设置
  */
 export const getSystemSettings = async (): Promise<SystemSettings> => {
-  const response = await axios.get(API_BASE);
-  return response.data.data;
+  const response = await request.get(API_BASE);
+  return response.data;
 };
 
 /**
@@ -30,6 +30,6 @@ export const getSystemSettings = async (): Promise<SystemSettings> => {
 export const updateSystemSettings = async (
   data: SystemSettingsUpdate
 ): Promise<SystemSettings> => {
-  const response = await axios.put(API_BASE, data);
-  return response.data.data;
+  const response = await request.put(API_BASE, data);
+  return response.data;
 };
