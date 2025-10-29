@@ -1,9 +1,9 @@
 /**
  * 数据源管理API
  */
-import axios from 'axios';
+import request from '@/utils/request';
 
-const API_BASE = '/api/v1/data-sources';
+const API_BASE = '/data-sources';
 
 export interface DataSource {
   id: number;
@@ -90,8 +90,11 @@ export interface DataSourceListParams {
 export const getDataSources = async (
   params: DataSourceListParams = {}
 ): Promise<{ total: number; items: DataSource[] }> => {
-  const response = await axios.get(API_BASE, { params });
-  return response.data.data;
+  // request 实例的拦截器已经返回 response.data
+  // 后端返回: { code: 200, message: "success", data: { total, items } }
+  // 拦截器后: { code: 200, message: "success", data: { total, items } }
+  const response = await request.get(API_BASE, { params });
+  return response.data;
 };
 
 /**
@@ -100,16 +103,16 @@ export const getDataSources = async (
 export const createDataSource = async (
   data: DataSourceCreate
 ): Promise<DataSource> => {
-  const response = await axios.post(API_BASE, data);
-  return response.data.data;
+  const response = await request.post(API_BASE, data);
+  return response.data;
 };
 
 /**
  * 获取数据源详情
  */
 export const getDataSource = async (id: number): Promise<DataSource> => {
-  const response = await axios.get(`${API_BASE}/${id}`);
-  return response.data.data;
+  const response = await request.get(`${API_BASE}/${id}`);
+  return response.data;
 };
 
 /**
@@ -119,15 +122,25 @@ export const updateDataSource = async (
   id: number,
   data: DataSourceUpdate
 ): Promise<DataSource> => {
-  const response = await axios.put(`${API_BASE}/${id}`, data);
-  return response.data.data;
+  const response = await request.put(`${API_BASE}/${id}`, data);
+  return response.data;
 };
 
 /**
  * 删除数据源
  */
 export const deleteDataSource = async (id: number): Promise<void> => {
-  await axios.delete(`${API_BASE}/${id}`);
+  await request.delete(`${API_BASE}/${id}`);
+};
+
+/**
+ * 使用配置信息测试数据源连接（不保存到数据库）
+ */
+export const testConnectionWithConfig = async (
+  config: DataSourceCreate
+): Promise<DataSourceTestResult> => {
+  const response = await request.post(`${API_BASE}/test-connection`, config);
+  return response.data;
 };
 
 /**
@@ -136,8 +149,8 @@ export const deleteDataSource = async (id: number): Promise<void> => {
 export const testDataSource = async (
   id: number
 ): Promise<DataSourceTestResult> => {
-  const response = await axios.post(`${API_BASE}/${id}/test`);
-  return response.data.data;
+  const response = await request.post(`${API_BASE}/${id}/test`);
+  return response.data;
 };
 
 /**
@@ -146,15 +159,15 @@ export const testDataSource = async (
 export const toggleDataSource = async (
   id: number
 ): Promise<{ is_enabled: boolean }> => {
-  const response = await axios.put(`${API_BASE}/${id}/toggle`);
-  return response.data.data;
+  const response = await request.put(`${API_BASE}/${id}/toggle`);
+  return response.data;
 };
 
 /**
  * 设置为默认数据源
  */
 export const setDefaultDataSource = async (id: number): Promise<void> => {
-  await axios.put(`${API_BASE}/${id}/set-default`);
+  await request.put(`${API_BASE}/${id}/set-default`);
 };
 
 /**
@@ -163,6 +176,6 @@ export const setDefaultDataSource = async (id: number): Promise<void> => {
 export const getPoolStatus = async (
   id: number
 ): Promise<DataSourcePoolStatus> => {
-  const response = await axios.get(`${API_BASE}/${id}/pool-status`);
-  return response.data.data;
+  const response = await request.get(`${API_BASE}/${id}/pool-status`);
+  return response.data;
 };

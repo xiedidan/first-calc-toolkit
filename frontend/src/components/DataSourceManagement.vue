@@ -238,10 +238,23 @@
       </el-form>
 
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit" :loading="submitting">
-          确定
-        </el-button>
+        <div class="dialog-footer">
+          <div class="footer-left">
+            <el-button
+              type="warning"
+              @click="handleTestInDialog"
+              :loading="testing"
+            >
+              测试连接
+            </el-button>
+          </div>
+          <div class="footer-right">
+            <el-button @click="dialogVisible = false">取消</el-button>
+            <el-button type="primary" @click="handleSubmit" :loading="submitting">
+              确定
+            </el-button>
+          </div>
+        </div>
       </template>
     </el-dialog>
   </div>
@@ -257,6 +270,7 @@ import {
   updateDataSource,
   deleteDataSource,
   testDataSource,
+  testConnectionWithConfig,
   toggleDataSource,
   setDefaultDataSource,
   type DataSource,
@@ -266,6 +280,7 @@ import {
 
 const loading = ref(false);
 const submitting = ref(false);
+const testing = ref(false);
 const dialogVisible = ref(false);
 const isEdit = ref(false);
 const editingId = ref<number | null>(null);
@@ -508,6 +523,51 @@ const handleSetDefault = async (row: DataSource) => {
   }
 };
 
+const handleTestInDialog = async () => {
+  if (!formRef.value) return;
+
+  // 验证必填字段
+  try {
+    await formRef.value.validate();
+  } catch (error) {
+    ElMessage.warning('请先填写完整的连接信息');
+    return;
+  }
+
+  // 编辑模式下，如果密码为空，提示用户
+  if (isEdit.value && !form.value.password) {
+    ElMessage.warning('编辑模式下测试连接需要输入密码');
+    return;
+  }
+
+  testing.value = true;
+  const loadingMsg = ElMessage({
+    message: '正在测试连接...',
+    type: 'info',
+    duration: 0,
+  });
+
+  try {
+    // 无论新建还是编辑模式，都使用表单中的当前配置进行测试
+    const result = await testConnectionWithConfig(form.value);
+    
+    loadingMsg.close();
+
+    if (result.success) {
+      ElMessage.success(`连接成功！耗时：${result.duration_ms}ms`);
+    } else {
+      ElMessage.error(`连接失败：${result.error}`);
+    }
+  } catch (error: any) {
+    loadingMsg.close();
+    const errorMsg = error.response?.data?.detail || '测试失败';
+    ElMessage.error(errorMsg);
+    console.error(error);
+  } finally {
+    testing.value = false;
+  }
+};
+
 const resetForm = () => {
   formRef.value?.resetFields();
   form.value = {
@@ -553,5 +613,22 @@ onMounted(() => {
   font-size: 12px;
   color: #909399;
   margin-top: 4px;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.footer-left {
+  /* 不设置flex: 1，让按钮保持自然宽度 */
+}
+
+.footer-right {
+  display: flex;
+  gap: 10px;
+  margin-left: auto;
 }
 </style>

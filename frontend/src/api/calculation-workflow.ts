@@ -24,6 +24,9 @@ export interface CalculationStep {
   description?: string
   code_type: 'python' | 'sql'
   code_content: string
+  data_source_id?: number
+  data_source_name?: string
+  python_env?: string
   sort_order: number
   is_enabled: boolean
   created_at: string
@@ -61,6 +64,8 @@ export interface StepCreateData {
   description?: string
   code_type: 'python' | 'sql'
   code_content: string
+  data_source_id?: number
+  python_env?: string
   is_enabled?: boolean
   sort_order?: number
 }
@@ -70,6 +75,8 @@ export interface StepUpdateData {
   description?: string
   code_type?: 'python' | 'sql'
   code_content?: string
+  data_source_id?: number
+  python_env?: string
   is_enabled?: boolean
 }
 
@@ -168,5 +175,20 @@ export const calculationStepApi = {
       result?: any
       error?: string
     }>(`/calculation-steps/${id}/test`, data || {})
+  },
+
+  // 测试代码（不需要保存）
+  testCodeWithoutSave(data: {
+    code_type: string
+    code_content: string
+    data_source_id?: number
+    test_params?: Record<string, any>
+  }) {
+    return request.post<{
+      success: boolean
+      duration_ms?: number
+      result?: any
+      error?: string
+    }>('/calculation-steps/test-code', data)
   }
 }

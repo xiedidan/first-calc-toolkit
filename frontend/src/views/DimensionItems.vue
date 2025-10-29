@@ -283,10 +283,17 @@ const fetchDimensionItems = async (orphansOnly = false) => {
       orphans_only: orphansOnly
     }
     
-    // 只有在不是查看孤儿记录且选择了维度时才传递维度ID
+    // 只有在不是查看孤儿记录且选择了维度时才传递维度code
     // 如果不选维度，则查询全部
     if (!orphansOnly && dimensionIds.value.length > 0) {
-      params.dimension_codes = dimensionIds.value.join(',')
+      // 将选中的维度ID转换为code
+      const selectedCodes = dimensionIds.value
+        .map(id => leafDimensions.value.find(dim => dim.id === id)?.code)
+        .filter(code => code) // 过滤掉undefined
+      
+      if (selectedCodes.length > 0) {
+        params.dimension_codes = selectedCodes.join(',')
+      }
     }
     
     if (searchForm.keyword) {
@@ -349,9 +356,11 @@ const handleSearchItems = async () => {
 
   searchLoading.value = true
   try {
+    // 将维度ID转换为code
+    const selectedDimension = leafDimensions.value.find(dim => dim.id === dimensionIds.value[0])
     const params = {
       keyword: searchKeyword.value,
-      dimension_code: dimensionIds.value[0], // 使用第一个选中的维度
+      dimension_code: selectedDimension?.code, // 使用第一个选中维度的code
       limit: 50
     }
     const res = await request.get('/dimension-items/charge-items/search', { params })
@@ -380,9 +389,11 @@ const handleSubmit = async () => {
 
   submitting.value = true
   try {
+    // 将维度ID转换为code
+    const selectedDimension = leafDimensions.value.find(dim => dim.id === dimensionIds.value[0])
     const item_codes = selectedItems.value.map(item => item.item_code)
     const res = await request.post('/dimension-items', {
-      dimension_code: dimensionIds.value[0], // 使用第一个选中的维度
+      dimension_code: selectedDimension?.code, // 使用第一个选中维度的code
       item_codes
     })
     ElMessage.success(res.message || '添加成功')
@@ -465,6 +476,7 @@ const fetchLeafDimensions = async (versionId: number) => {
     const res = await request.get(`/model-nodes/version/${versionId}/leaf`)
     leafDimensions.value = res.map((node: any) => ({
       id: node.id,
+      code: node.code,  // 添加code字段
       name: node.name,
       full_path: node.full_path || node.name
     }))
@@ -524,7 +536,14 @@ const handleClearAll = async () => {
       }
     )
 
-    await request.delete(`/dimension-items/dimension/${dimensionIds.value[0]}/clear-all`)
+    // 将维度ID转换为code
+    const selectedDimension = leafDimensions.value.find(dim => dim.id === dimensionIds.value[0])
+    if (!selectedDimension?.code) {
+      ElMessage.error('无法获取维度编码')
+      return
+    }
+    
+    await request.delete(`/dimension-items/dimension/${selectedDimension.code}/clear-all`)
     ElMessage.success('清空成功')
     fetchDimensionItems()
   } catch (error: any) {

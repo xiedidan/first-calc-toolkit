@@ -187,6 +187,12 @@
               </el-tag>
             </template>
           </el-table-column>
+          <el-table-column prop="data_source_name" label="数据源" width="150" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span v-if="row.code_type === 'sql'">{{ row.data_source_name || '-' }}</span>
+              <span v-else style="color: #999;">-</span>
+            </template>
+          </el-table-column>
           <el-table-column prop="code_content" label="代码内容" min-width="300">
             <template #default="{ row }">
               <pre class="code-preview">{{ row.code_content }}</pre>
@@ -237,10 +243,45 @@
           />
         </el-form-item>
         <el-form-item label="代码类型" prop="code_type">
-          <el-radio-group v-model="stepFormData.code_type">
+          <el-radio-group v-model="stepFormData.code_type" @change="handleCodeTypeChange">
             <el-radio value="python">Python</el-radio>
             <el-radio value="sql">SQL</el-radio>
           </el-radio-group>
+        </el-form-item>
+        <el-form-item 
+          v-if="stepFormData.code_type === 'sql'" 
+          label="数据源" 
+          prop="data_source_id"
+        >
+          <el-select
+            v-model="stepFormData.data_source_id"
+            placeholder="请选择数据源"
+            style="width: 100%"
+            clearable
+          >
+            <el-option
+              v-for="ds in dataSourceList"
+              :key="ds.id"
+              :label="ds.name"
+              :value="ds.id"
+            >
+              <span>{{ ds.name }}</span>
+              <span style="color: #8492a6; font-size: 12px; margin-left: 8px;">
+                ({{ ds.db_type }})
+              </span>
+            </el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item 
+          v-if="stepFormData.code_type === 'python'" 
+          label="虚拟环境" 
+          prop="python_env"
+        >
+          <el-input 
+            v-model="stepFormData.python_env" 
+            placeholder="Python虚拟环境路径（可选，暂未实现）"
+            disabled
+          />
         </el-form-item>
         <el-form-item label="代码内容" prop="code_content">
           <el-input
@@ -256,10 +297,26 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="stepDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleStepSubmit" :loading="submitting">确定</el-button>
+        <div style="display: flex; justify-content: space-between; width: 100%;">
+          <div>
+            <el-button 
+              type="warning" 
+              @click="handleTestStepInDialog" 
+              :loading="testing"
+            >
+              测试代码
+            </el-button>
+          </div>
+          <div>
+            <el-button @click="stepDialogVisible = false">取消</el-button>
+            <el-button type="primary" @click="handleStepSubmit" :loading="submitting">确定</el-button>
+          </div>
+        </div>
       </template>
     </el-dialog>
+
+    <!-- 测试结果对话框 -->
+    <TestResultDialog v-model:visible="testResultVisible" :result="testResult" />
   </div>
 </template>
 
@@ -276,9 +333,14 @@ import type {
   StepUpdateData
 } from '@/api/calculation-workflow'
 import { getModelVersions } from '@/api/model'
+import { getDataSources, type DataSource } from '@/api/data-sources'
+import TestResultDialog from '@/components/TestResultDialog.vue'
 
 // 版本列表
 const versionList = ref<any[]>([])
+
+// 数据源列表
+const dataSourceList = ref<DataSource[]>([])
 
 // 查询参数
 const queryParams = reactive({
@@ -339,12 +401,28 @@ const stepFormData = reactive<Partial<StepCreateData & { id?: number }>>({
   description: '',
   code_type: 'python',
   code_content: '',
+  data_source_id: undefined,
+  python_env: '',
   is_enabled: true
 })
 const stepFormRules: FormRules = {
   name: [{ required: true, message: '请输入步骤名称', trigger: 'blur' }],
   code_type: [{ required: true, message: '请选择代码类型', trigger: 'change' }],
-  code_content: [{ required: true, message: '请输入代码内容', trigger: 'blur' }]
+  code_content: [{ required: true, message: '请输入代码内容', trigger: 'blur' }],
+  data_source_id: [
+    { 
+      required: true, 
+      message: '请选择数据源', 
+      trigger: 'change',
+      validator: (rule: any, value: any, callback: any) => {
+        if (stepFormData.code_type === 'sql' && !value) {
+          callback(new Error('SQL步骤必须选择数据源'))
+        } else {
+          callback()
+        }
+      }
+    }
+  ]
 }
 
 // 加载版本列表
@@ -354,6 +432,16 @@ const loadVersions = async () => {
     versionList.value = res.items
   } catch (error) {
     console.error('加载版本列表失败:', error)
+  }
+}
+
+// 加载数据源列表
+const loadDataSources = async () => {
+  try {
+    const res = await getDataSources({ page: 1, size: 1000 })
+    dataSourceList.value = res.items
+  } catch (error) {
+    console.error('加载数据源列表失败:', error)
   }
 }
 
@@ -529,6 +617,8 @@ const handleCreateStep = () => {
     description: '',
     code_type: 'python',
     code_content: '',
+    data_source_id: undefined,
+    python_env: '',
     is_enabled: true
   })
   stepDialogVisible.value = true
@@ -545,9 +635,21 @@ const handleEditStep = (row: CalculationStep) => {
     description: row.description,
     code_type: row.code_type,
     code_content: row.code_content,
+    data_source_id: row.data_source_id,
+    python_env: row.python_env,
     is_enabled: row.is_enabled
   })
   stepDialogVisible.value = true
+}
+
+// 代码类型变化处理
+const handleCodeTypeChange = () => {
+  // 切换代码类型时清空相关字段
+  if (stepFormData.code_type === 'sql') {
+    stepFormData.python_env = ''
+  } else {
+    stepFormData.data_source_id = undefined
+  }
 }
 
 // 提交步骤
@@ -564,6 +666,8 @@ const handleStepSubmit = async () => {
           description: stepFormData.description,
           code_type: stepFormData.code_type,
           code_content: stepFormData.code_content,
+          data_source_id: stepFormData.code_type === 'sql' ? stepFormData.data_source_id : undefined,
+          python_env: stepFormData.code_type === 'python' ? stepFormData.python_env : undefined,
           is_enabled: stepFormData.is_enabled
         }
         await calculationStepApi.update(stepFormData.id, updateData)
@@ -575,6 +679,8 @@ const handleStepSubmit = async () => {
           description: stepFormData.description,
           code_type: stepFormData.code_type!,
           code_content: stepFormData.code_content!,
+          data_source_id: stepFormData.code_type === 'sql' ? stepFormData.data_source_id : undefined,
+          python_env: stepFormData.code_type === 'python' ? stepFormData.python_env : undefined,
           is_enabled: stepFormData.is_enabled
         }
         await calculationStepApi.create(createData)
@@ -621,26 +727,58 @@ const handleMoveDown = async (row: CalculationStep) => {
 }
 
 // 测试步骤
+const testing = ref(false)
+const testResultVisible = ref(false)
+const testResult = reactive({
+  success: false,
+  duration_ms: 0,
+  result: null as any,
+  error: ''
+})
+
 const handleTestStep = async (row: CalculationStep) => {
   try {
     const res = await calculationStepApi.testCode(row.id)
-    if (res.success) {
-      ElMessageBox.alert(
-        `<pre>${JSON.stringify(res.result, null, 2)}</pre>`,
-        '测试结果',
-        {
-          dangerouslyUseHTMLString: true,
-          confirmButtonText: '确定'
-        }
-      )
-    } else {
-      ElMessageBox.alert(res.error || '测试失败', '测试结果', {
-        type: 'error',
-        confirmButtonText: '确定'
-      })
-    }
+    Object.assign(testResult, res)
+    testResultVisible.value = true
   } catch (error: any) {
     ElMessage.error(error.response?.data?.detail || '测试失败')
+  }
+}
+
+// 在对话框中测试步骤
+const handleTestStepInDialog = async () => {
+  // 验证必填字段
+  if (!stepFormData.code_type) {
+    ElMessage.warning('请选择代码类型')
+    return
+  }
+  
+  if (!stepFormData.code_content) {
+    ElMessage.warning('请输入代码内容')
+    return
+  }
+  
+  if (stepFormData.code_type === 'sql' && !stepFormData.data_source_id) {
+    ElMessage.warning('SQL代码必须选择数据源')
+    return
+  }
+  
+  testing.value = true
+  
+  try {
+    const res = await calculationStepApi.testCodeWithoutSave({
+      code_type: stepFormData.code_type,
+      code_content: stepFormData.code_content,
+      data_source_id: stepFormData.data_source_id
+    })
+    
+    Object.assign(testResult, res)
+    testResultVisible.value = true
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || '测试失败')
+  } finally {
+    testing.value = false
   }
 }
 
@@ -696,6 +834,7 @@ const formatDateTime = (dateStr: string) => {
 // 初始化
 onMounted(() => {
   loadVersions()
+  loadDataSources()
   loadList()
 })
 </script>

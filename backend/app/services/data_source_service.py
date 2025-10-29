@@ -27,18 +27,22 @@ class DataSourceConnectionManager:
         """初始化连接管理器"""
         self.pools: Dict[int, Any] = {}  # 存储所有数据源的连接池
     
-    def _build_connection_string(self, data_source: DataSource) -> str:
+    def _build_connection_string(self, data_source: DataSource, use_plain_password: bool = False) -> str:
         """
         构建数据库连接字符串
         
         Args:
             data_source: 数据源对象
+            use_plain_password: 是否使用明文密码（用于测试连接时）
             
         Returns:
             连接字符串
         """
-        # 解密密码
-        password = decrypt_password(data_source.password)
+        # 解密密码（如果不是明文）
+        if use_plain_password:
+            password = data_source.password
+        else:
+            password = decrypt_password(data_source.password)
         
         # 根据数据库类型构建连接字符串
         if data_source.db_type == DBType.POSTGRESQL:
@@ -105,12 +109,13 @@ class DataSourceConnectionManager:
             engine.dispose()
             del self.pools[data_source_id]
     
-    def test_connection(self, data_source: DataSource) -> DataSourceTestResult:
+    def test_connection(self, data_source: DataSource, use_plain_password: bool = False) -> DataSourceTestResult:
         """
         测试数据源连接
         
         Args:
             data_source: 数据源对象
+            use_plain_password: 是否使用明文密码（用于测试连接时）
             
         Returns:
             测试结果
@@ -119,7 +124,7 @@ class DataSourceConnectionManager:
         
         try:
             # 构建连接字符串
-            conn_str = self._build_connection_string(data_source)
+            conn_str = self._build_connection_string(data_source, use_plain_password=use_plain_password)
             
             # 创建临时引擎（不使用连接池）
             engine = create_engine(conn_str, poolclass=NullPool)

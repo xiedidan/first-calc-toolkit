@@ -17,6 +17,8 @@ class CalculationStep(Base):
     description = Column(Text, comment="步骤描述")
     code_type = Column(String(20), nullable=False, comment="代码类型(python/sql)")
     code_content = Column(Text, nullable=False, comment="代码内容")
+    data_source_id = Column(Integer, ForeignKey("data_sources.id", ondelete="SET NULL"), nullable=True, index=True, comment="数据源ID（SQL步骤使用）")
+    python_env = Column(String(200), nullable=True, comment="Python虚拟环境路径（Python步骤使用）")
     sort_order = Column(Numeric(10, 2), nullable=False, index=True, comment="执行顺序")
     is_enabled = Column(Boolean, default=True, nullable=False, comment="是否启用")
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -24,4 +26,5 @@ class CalculationStep(Base):
 
     # 关系
     workflow = relationship("CalculationWorkflow", back_populates="steps")
+    data_source = relationship("DataSource", foreign_keys=[data_source_id])
     logs = relationship("CalculationStepLog", back_populates="step", cascade="all, delete-orphan")

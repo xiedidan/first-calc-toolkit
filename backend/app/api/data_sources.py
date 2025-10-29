@@ -27,7 +27,7 @@ router = APIRouter()
 @router.get("", response_model=dict)
 def get_data_sources(
     page: int = Query(1, ge=1, description="页码"),
-    size: int = Query(10, ge=1, le=100, description="每页数量"),
+    size: int = Query(10, ge=1, le=1000, description="每页数量"),
     keyword: Optional[str] = Query(None, description="搜索关键词"),
     db_type: Optional[str] = Query(None, description="数据库类型筛选"),
     is_enabled: Optional[bool] = Query(None, description="启用状态筛选"),
@@ -139,6 +139,36 @@ def delete_data_source(
         "code": 200,
         "message": "删除成功",
         "data": None,
+    }
+
+
+@router.post("/test-connection", response_model=dict)
+def test_connection_with_config(
+    config: DataSourceCreate,
+):
+    """使用配置信息测试数据源连接（不保存到数据库）"""
+    # 创建临时数据源对象用于测试
+    temp_data_source = DataSource(
+        name=config.name,
+        db_type=config.db_type,
+        host=config.host,
+        port=config.port,
+        database_name=config.database_name,
+        username=config.username,
+        password=config.password,  # 明文密码
+        schema_name=config.schema_name,
+        pool_size_min=config.pool_size_min,
+        pool_size_max=config.pool_size_max,
+        pool_timeout=config.pool_timeout,
+    )
+    
+    # 使用明文密码测试连接
+    result = connection_manager.test_connection(temp_data_source, use_plain_password=True)
+    
+    return {
+        "code": 200,
+        "message": "success",
+        "data": result,
     }
 
 
