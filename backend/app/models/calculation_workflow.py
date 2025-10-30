@@ -22,3 +22,4 @@ class CalculationWorkflow(Base):
     # 关系
     version = relationship("ModelVersion", back_populates="workflows")
     steps = relationship("CalculationStep", back_populates="workflow", cascade="all, delete-orphan", order_by="CalculationStep.sort_order")
+    calculation_tasks = relationship("CalculationTask", back_populates="workflow")

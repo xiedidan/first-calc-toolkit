@@ -34,7 +34,7 @@ def get_dimension_items(
     keyword: Optional[str] = Query(None, description="搜索关键词"),
     orphans_only: bool = Query(False, description="仅显示孤儿记录"),
     page: int = Query(1, ge=1, description="页码"),
-    size: int = Query(10, ge=1, le=100, description="每页数量"),
+    size: int = Query(10, ge=1, le=10000, description="每页数量"),
     db: Session = Depends(deps.get_db),
     current_user = Depends(deps.get_current_user),
 ):

@@ -81,6 +81,18 @@ const routes: RouteRecordRaw[] = [
         name: 'SystemSettings',
         component: () => import('@/views/SystemSettings.vue'),
         meta: { title: '系统设置' }
+      },
+      {
+        path: '/calculation-tasks',
+        name: 'CalculationTasks',
+        component: () => import('@/views/CalculationTasks.vue'),
+        meta: { title: '计算任务管理' }
+      },
+      {
+        path: '/results',
+        name: 'Results',
+        component: () => import('@/views/Results.vue'),
+        meta: { title: '业务价值报表' }
       }
     ]
   }

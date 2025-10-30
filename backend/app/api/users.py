@@ -17,7 +17,7 @@ router = APIRouter()
 @router.get("", response_model=dict)
 async def get_users(
     page: int = Query(1, ge=1),
-    size: int = Query(10, ge=1, le=100),
+    size: int = Query(10, ge=1, le=10000),
     keyword: str = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)

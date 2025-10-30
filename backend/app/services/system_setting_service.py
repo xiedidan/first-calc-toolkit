@@ -120,21 +120,23 @@ class SystemSettingService:
         Returns:
             更新后的系统设置响应对象
         """
-        # 更新当期年月
+        # 更新当期年月（空字符串转换为 None）
         if settings_update.current_period is not None:
+            value = settings_update.current_period.strip() if settings_update.current_period else None
             SystemSettingService.set_setting(
                 db,
                 SystemSettingService.KEY_CURRENT_PERIOD,
-                settings_update.current_period,
+                value if value else None,
                 "当期年月，用于计算任务的默认计算周期"
             )
         
-        # 更新系统名称
+        # 更新系统名称（空字符串转换为 None）
         if settings_update.system_name is not None:
+            value = settings_update.system_name.strip() if settings_update.system_name else None
             SystemSettingService.set_setting(
                 db,
                 SystemSettingService.KEY_SYSTEM_NAME,
-                settings_update.system_name,
+                value if value else None,
                 "系统名称"
             )
         

@@ -29,6 +29,9 @@ request.interceptors.request.use(
   }
 )
 
+// Track if we're already redirecting to avoid multiple redirects
+let isRedirecting = false
+
 // Response interceptor
 request.interceptors.response.use(
   (response: AxiosResponse) => {
@@ -42,11 +45,18 @@ request.interceptors.response.use(
 
       switch (status) {
         case 401:
-          ElMessage.error('未授权，请重新登录')
-          // Clear token and redirect to login
-          localStorage.removeItem('access_token')
-          localStorage.removeItem('user_info')
-          window.location.href = '/login'
+          // Only show message and redirect once
+          if (!isRedirecting) {
+            isRedirecting = true
+            ElMessage.error('登录已过期，请重新登录')
+            // Clear token and redirect to login
+            localStorage.removeItem('access_token')
+            localStorage.removeItem('user_info')
+            // Use setTimeout to avoid multiple redirects
+            setTimeout(() => {
+              window.location.href = '/login'
+            }, 500)
+          }
           break
         case 403:
           ElMessage.error(data.detail || '没有权限访问')

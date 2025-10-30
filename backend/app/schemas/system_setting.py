@@ -56,8 +56,8 @@ class SystemSettingsUpdate(BaseModel):
     @classmethod
     def validate_current_period(cls, v):
         """验证当期年月格式"""
-        if v is not None:
-            # 验证格式：YYYY-MM
+        if v is not None and v.strip():
+            # 验证格式：YYYY-MM（允许空字符串）
             if not re.match(r'^\d{4}-(0[1-9]|1[0-2])$', v):
                 raise ValueError('当期年月格式必须为YYYY-MM，例如：2025-10')
         return v

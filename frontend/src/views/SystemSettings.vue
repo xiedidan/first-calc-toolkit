@@ -98,13 +98,10 @@ const saveBasicSettings = async () => {
 
     saving.value = true;
     try {
-      const updateData: any = {};
-      if (basicForm.value.current_period) {
-        updateData.current_period = basicForm.value.current_period;
-      }
-      if (basicForm.value.system_name) {
-        updateData.system_name = basicForm.value.system_name;
-      }
+      const updateData: any = {
+        current_period: basicForm.value.current_period || null,
+        system_name: basicForm.value.system_name || null,
+      };
 
       await updateSystemSettings(updateData);
       ElMessage.success('保存成功');

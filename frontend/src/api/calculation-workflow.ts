@@ -192,3 +192,35 @@ export const calculationStepApi = {
     }>('/calculation-steps/test-code', data)
   }
 }
+
+// 兼容性导出 - 提供单独的函数导出
+export function getCalculationWorkflows(params?: WorkflowListParams) {
+  return request({
+    url: '/calculation-workflows',
+    method: 'get',
+    params
+  })
+}
+
+export function createCalculationWorkflow(data: WorkflowCreateData) {
+  return request({
+    url: '/calculation-workflows',
+    method: 'post',
+    data
+  })
+}
+
+export function updateCalculationWorkflow(id: number, data: WorkflowUpdateData) {
+  return request({
+    url: `/calculation-workflows/${id}`,
+    method: 'put',
+    data
+  })
+}
+
+export function deleteCalculationWorkflow(id: number) {
+  return request({
+    url: `/calculation-workflows/${id}`,
+    method: 'delete'
+  })
+}

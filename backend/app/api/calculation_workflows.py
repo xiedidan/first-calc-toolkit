@@ -27,7 +27,7 @@ router = APIRouter()
 def get_calculation_workflows(
     version_id: Optional[int] = Query(None, description="模型版本ID筛选"),
     page: int = Query(1, ge=1, description="页码"),
-    size: int = Query(10, ge=1, le=100, description="每页数量"),
+    size: int = Query(10, ge=1, le=10000, description="每页数量"),
     keyword: Optional[str] = Query(None, description="搜索关键词"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

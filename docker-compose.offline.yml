@@ -1,0 +1,90 @@
+version: '3.8'
+
+# ============================================
+# 医院科室业务价值评估工具 - 离线部署配置
+# 适用于: 使用现有PostgreSQL数据库的场景
+# ============================================
+
+services:
+  # Redis服务 - 消息队列和缓存
+  redis:
+    image: redis:7-alpine
+    container_name: hospital_redis_offline
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - hospital_network
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 后端服务 - FastAPI应用
+  backend:
+    image: hospital-backend:latest
+    container_name: hospital_backend_offline
+    env_file:
+      - .env
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - hospital_network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    extra_hosts:
+      # 允许容器访问宿主机的PostgreSQL
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Celery Worker服务 - 异步任务处理
+  celery-worker:
+    image: hospital-backend:latest
+    container_name: hospital_celery_offline
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - hospital_network
+    depends_on:
+      - redis
+      - backend
+    restart: always
+    command: celery -A app.celery_app worker --loglevel=info
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # 前端服务 - Nginx + Vue.js
+  frontend:
+    image: hospital-frontend:latest
+    container_name: hospital_frontend_offline
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    networks:
+      - hospital_network
+    depends_on:
+      - backend
+    restart: always
+
+volumes:
+  redis_data:
+    name: hospital_redis_data_offline
+
+networks:
+  hospital_network:
+    name: hospital_network_offline
+    driver: bridge

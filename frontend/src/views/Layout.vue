@@ -72,16 +72,16 @@
             <el-menu-item index="/calculation-workflows">计算流程管理</el-menu-item>
           </el-sub-menu>
 
-          <!-- 计算任务管理 (未实现) -->
-          <el-menu-item index="/tasks" disabled>
+          <!-- 计算任务管理 -->
+          <el-menu-item index="/calculation-tasks">
             <el-icon><Clock /></el-icon>
             <span>计算任务管理</span>
           </el-menu-item>
 
-          <!-- 报表查询展示 (未实现) -->
-          <el-menu-item index="/reports" disabled>
+          <!-- 报表查询展示 -->
+          <el-menu-item index="/results">
             <el-icon><DataAnalysis /></el-icon>
-            <span>报表查询展示</span>
+            <span>业务价值报表</span>
           </el-menu-item>
 
           <!-- ADV自动建模 (未实现) -->
@@ -176,6 +176,12 @@ const activeMenu = computed(() => {
   }
   if (path.startsWith('/calculation-workflows')) {
     return '/calculation-workflows'
+  }
+  if (path.startsWith('/calculation-tasks')) {
+    return '/calculation-tasks'
+  }
+  if (path.startsWith('/results')) {
+    return '/results'
   }
   if (path.startsWith('/data-sources')) {
     return '/data-sources'

@@ -11,8 +11,12 @@ from app.config import settings
 engine = create_engine(
     settings.DATABASE_URL,
     pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
+    pool_size=5,  # 减少连接池大小
+    max_overflow=10,  # 减少最大溢出连接数
+    pool_recycle=3600,  # 1小时回收连接
+    connect_args={
+        "connect_timeout": 5,  # 连接超时5秒
+    }
 )
 
 # 创建会话工厂

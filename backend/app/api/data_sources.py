@@ -27,7 +27,7 @@ router = APIRouter()
 @router.get("", response_model=dict)
 def get_data_sources(
     page: int = Query(1, ge=1, description="页码"),
-    size: int = Query(10, ge=1, le=1000, description="每页数量"),
+    size: int = Query(10, ge=1, le=10000, description="每页数量"),
     keyword: Optional[str] = Query(None, description="搜索关键词"),
     db_type: Optional[str] = Query(None, description="数据库类型筛选"),
     is_enabled: Optional[bool] = Query(None, description="启用状态筛选"),

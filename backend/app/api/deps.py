@@ -11,8 +11,8 @@ from app.models import User
 from app.utils.security import decode_access_token
 
 
-# Security scheme
-security = HTTPBearer()
+# Security scheme - auto_error=False to handle missing credentials manually
+security = HTTPBearer(auto_error=False)
 
 
 def get_db() -> Generator:
@@ -25,10 +25,18 @@ def get_db() -> Generator:
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db)
 ) -> User:
     """Get current authenticated user"""
+    # Check if credentials are provided
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
     token = credentials.credentials
     
     # Decode token
@@ -46,6 +54,15 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    try:
+        user_id = int(user_id)
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token format",
             headers={"WWW-Authenticate": "Bearer"},
         )
     

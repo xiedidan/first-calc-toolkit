@@ -20,7 +20,7 @@ export interface SystemSettingsUpdate {
  * 获取系统设置
  */
 export const getSystemSettings = async (): Promise<SystemSettings> => {
-  const response = await request.get(API_BASE);
+  const response: any = await request.get(API_BASE);
   return response.data;
 };
 
@@ -30,6 +30,6 @@ export const getSystemSettings = async (): Promise<SystemSettings> => {
 export const updateSystemSettings = async (
   data: SystemSettingsUpdate
 ): Promise<SystemSettings> => {
-  const response = await request.put(API_BASE, data);
+  const response: any = await request.put(API_BASE, data);
   return response.data;
 };

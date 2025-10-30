@@ -23,7 +23,7 @@ def get_departments(
     db: Session = Depends(deps.get_db),
     current_user = Depends(deps.get_current_user),
     page: int = Query(1, ge=1, description="页码"),
-    size: int = Query(10, ge=1, le=100, description="每页数量"),
+    size: int = Query(10, ge=1, le=10000, description="每页数量"),
     keyword: Optional[str] = Query(None, description="搜索关键词"),
     is_active: Optional[bool] = Query(None, description="是否激活"),
     sort_by: Optional[str] = Query("sort_order", description="排序字段"),

@@ -22,8 +22,12 @@ celery_app.conf.update(
     task_track_started=True,
     task_time_limit=3600,  # 1小时超时
     task_soft_time_limit=3300,  # 55分钟软超时
+    broker_connection_retry_on_startup=True,  # 启动时重试连接
+    broker_connection_retry=True,  # 启用连接重试
+    broker_connection_max_retries=3,  # 最多重试3次
 )
 
 # 导入任务模块（必须在配置之后）
 # 这样 Celery worker 启动时会自动注册这些任务
 from app.tasks import import_tasks  # noqa: F401
+from app.tasks import calculation_tasks  # noqa: F401
