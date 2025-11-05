@@ -514,19 +514,20 @@ const handleImportSuccess = () => {
 
 // 全部清除
 const handleClearAll = async () => {
-  if (dimensionIds.value.length === 0) {
-    ElMessage.warning('请先选择维度')
-    return
-  }
-  
+  // 如果选择了多个维度，提示只能选择一个或不选
   if (dimensionIds.value.length > 1) {
-    ElMessage.warning('清空操作只能选择一个维度')
+    ElMessage.warning('清空操作只能选择一个维度或不选（清空全部）')
     return
   }
 
+  // 根据是否选择维度显示不同的提示
+  const confirmMessage = dimensionIds.value.length === 0
+    ? `确定要清空当前医院的所有维度目录数据吗？此操作不可恢复！`
+    : `确定要清空所选维度的所有收费项目吗？此操作不可恢复！`
+
   try {
     await ElMessageBox.confirm(
-      `确定要清空所选维度的所有收费项目吗？此操作不可恢复！`,
+      confirmMessage,
       '警告',
       {
         confirmButtonText: '确定清空',
@@ -536,14 +537,20 @@ const handleClearAll = async () => {
       }
     )
 
-    // 将维度ID转换为code
-    const selectedDimension = leafDimensions.value.find(dim => dim.id === dimensionIds.value[0])
-    if (!selectedDimension?.code) {
-      ElMessage.error('无法获取维度编码')
-      return
+    // 如果选择了维度，清空该维度；否则清空全部
+    if (dimensionIds.value.length === 1) {
+      // 将维度ID转换为code
+      const selectedDimension = leafDimensions.value.find(dim => dim.id === dimensionIds.value[0])
+      if (!selectedDimension?.code) {
+        ElMessage.error('无法获取维度编码')
+        return
+      }
+      await request.delete(`/dimension-items/dimension/${selectedDimension.code}/clear-all`)
+    } else {
+      // 清空全部
+      await request.delete('/dimension-items/clear-all')
     }
     
-    await request.delete(`/dimension-items/dimension/${selectedDimension.code}/clear-all`)
     ElMessage.success('清空成功')
     fetchDimensionItems()
   } catch (error: any) {

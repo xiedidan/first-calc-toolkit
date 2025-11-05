@@ -72,3 +72,10 @@ Thumbs.db
 
 # Alembic
 alembic/versions/*.pyc
+
+# 离线打包文件
+offline-package/
+hospital-value-toolkit-offline-*.tar.gz
+*.tar.gz
+# 保留脚本文件，只忽略生成的镜像和打包文件
+!scripts/*.tar.gz

@@ -46,12 +46,15 @@ async def get_users(
     items = []
     for user in users:
         role_codes = [role.code for role in user.roles]
+        hospital_name = user.hospital.name if user.hospital else None
         items.append(UserSchema(
             id=user.id,
             username=user.username,
             name=user.name,
             email=user.email,
             status=user.status,
+            hospital_id=user.hospital_id,
+            hospital_name=hospital_name,
             created_at=user.created_at,
             updated_at=user.updated_at,
             roles=role_codes
@@ -89,12 +92,23 @@ async def create_user(
                 detail="Email already exists"
             )
     
+    # Validate hospital_id if provided
+    if user_create.hospital_id is not None:
+        from app.models.hospital import Hospital
+        hospital = db.query(Hospital).filter(Hospital.id == user_create.hospital_id).first()
+        if not hospital:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Hospital ID {user_create.hospital_id} does not exist"
+            )
+    
     # Create user
     user = User(
         username=user_create.username,
         name=user_create.name,
         email=user_create.email,
         hashed_password=get_password_hash(user_create.password),
+        hospital_id=user_create.hospital_id,
         status="active"
     )
     
@@ -109,12 +123,15 @@ async def create_user(
     
     # Format response
     role_codes = [role.code for role in user.roles]
+    hospital_name = user.hospital.name if user.hospital else None
     return UserSchema(
         id=user.id,
         username=user.username,
         name=user.name,
         email=user.email,
         status=user.status,
+        hospital_id=user.hospital_id,
+        hospital_name=hospital_name,
         created_at=user.created_at,
         updated_at=user.updated_at,
         roles=role_codes
@@ -139,12 +156,15 @@ async def get_user(
     
     # Format response
     role_codes = [role.code for role in user.roles]
+    hospital_name = user.hospital.name if user.hospital else None
     return UserSchema(
         id=user.id,
         username=user.username,
         name=user.name,
         email=user.email,
         status=user.status,
+        hospital_id=user.hospital_id,
+        hospital_name=hospital_name,
         created_at=user.created_at,
         updated_at=user.updated_at,
         roles=role_codes
@@ -191,6 +211,17 @@ async def update_user(
     if user_update.status is not None:
         user.status = user_update.status
     
+    # Update hospital_id
+    if user_update.hospital_id is not None:
+        from app.models.hospital import Hospital
+        hospital = db.query(Hospital).filter(Hospital.id == user_update.hospital_id).first()
+        if not hospital:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Hospital ID {user_update.hospital_id} does not exist"
+            )
+        user.hospital_id = user_update.hospital_id
+    
     # Update roles
     if user_update.role_ids is not None:
         roles = db.query(Role).filter(Role.id.in_(user_update.role_ids)).all()
@@ -201,12 +232,15 @@ async def update_user(
     
     # Format response
     role_codes = [role.code for role in user.roles]
+    hospital_name = user.hospital.name if user.hospital else None
     return UserSchema(
         id=user.id,
         username=user.username,
         name=user.name,
         email=user.email,
         status=user.status,
+        hospital_id=user.hospital_id,
+        hospital_name=hospital_name,
         created_at=user.created_at,
         updated_at=user.updated_at,
         roles=role_codes

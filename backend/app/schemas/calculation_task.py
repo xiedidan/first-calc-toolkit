@@ -97,16 +97,29 @@ class StructureRow(BaseModel):
     ratio: Optional[Decimal] = None  # 占比
 
 
+class TreeNode(BaseModel):
+    """树形表格节点数据"""
+    id: int  # 节点ID
+    dimension_name: str  # 维度名称
+    workload: Optional[Decimal] = None  # 工作量
+    hospital_value: str = "-"  # 全院业务价值（叶子节点有值，非叶子节点为"-"）
+    business_guide: str = "-"  # 业务导向（叶子节点有值，非叶子节点为"-"）
+    dept_value: str = "-"  # 科室业务价值（叶子节点有值，非叶子节点为"-"）
+    amount: Optional[Decimal] = None  # 金额
+    ratio: Optional[Decimal] = None  # 占比
+    children: Optional[List['TreeNode']] = None  # 子节点（叶子节点不包含此字段）
+
+
 class DepartmentDetailResponse(BaseModel):
     """科室详细业务价值数据"""
     department_id: int
     department_name: str
     period: str
     sequences: List[SequenceDetail]  # 保留旧格式兼容性
-    # 新增：Excel模板格式
-    doctor: Optional[List[StructureRow]] = None  # 医生序列
-    nurse: Optional[List[StructureRow]] = None  # 护理序列
-    tech: Optional[List[StructureRow]] = None  # 医技序列
+    # 树形表格数据
+    doctor: Optional[List[TreeNode]] = None  # 医生序列
+    nurse: Optional[List[TreeNode]] = None  # 护理序列
+    tech: Optional[List[TreeNode]] = None  # 医技序列
 
 
 # 汇总数据相关

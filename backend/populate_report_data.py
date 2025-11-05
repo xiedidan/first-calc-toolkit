@@ -264,48 +264,51 @@ def populate_report_data(
         # 6.2 计算所有维度的占比（一次性计算所有层级）
         calculate_all_dimension_ratios(db, task_id, dept.id)
         
-        # 6.3 计算序列汇总值（基于维度值求和）
+        # 6.3 计算序列汇总值（基于维度值逐级汇总，参考明细表算法）
+        # 先查询该科室的所有维度结果
+        all_dimensions = db.query(CalculationResult).filter(
+            CalculationResult.task_id == task_id,
+            CalculationResult.department_id == dept.id,
+            CalculationResult.node_type == "dimension"
+        ).all()
+        
+        # 构建节点映射
+        result_map = {d.node_id: d for d in all_dimensions}
+        
+        # 递归函数：从子节点汇总价值（参考明细表的 calculate_sum_from_children）
+        def calculate_sum_from_children(node_id: int) -> Decimal:
+            """递归计算节点的价值（从子节点汇总）"""
+            result = result_map.get(node_id)
+            if not result:
+                return Decimal("0")
+            
+            # 查找该节点的所有子节点
+            children = [d for d in all_dimensions if d.parent_id == node_id]
+            
+            if not children:
+                # 叶子节点，直接返回自己的价值
+                return result.value or Decimal("0")
+            
+            # 非叶子节点，汇总子节点的价值
+            total_value = Decimal("0")
+            for child in children:
+                child_value = calculate_sum_from_children(child.node_id)
+                total_value += child_value
+            
+            return total_value
+        
         for seq_node in sequence_nodes:
-            # 查询该序列下所有末级维度的价值总和
-            # 使用递归查询找出该序列下的所有维度（包括多层嵌套）
-            
-            # 方法1：查询所有维度，然后筛选出属于该序列的
-            all_dimensions = db.query(CalculationResult).filter(
-                CalculationResult.task_id == task_id,
-                CalculationResult.department_id == dept.id,
-                CalculationResult.node_type == "dimension"
-            ).all()
-            
-            # 构建父子关系映射
-            dimension_map = {d.node_id: d for d in all_dimensions}
-            
-            # 找出属于该序列的所有维度
-            def belongs_to_sequence(dim_result, seq_id):
-                """判断维度是否属于某个序列"""
-                current = dim_result
-                while current:
-                    if current.parent_id == seq_id:
-                        return True
-                    # 查找父节点
-                    current = dimension_map.get(current.parent_id)
-                return False
-            
-            # 只统计末级维度（叶子节点）的价值
-            sequence_dimensions = [
+            # 找出该序列的直接子维度（一级维度）
+            first_level_dimensions = [
                 d for d in all_dimensions 
-                if belongs_to_sequence(d, seq_node.id)
+                if d.parent_id == seq_node.id
             ]
             
-            # 找出末级维度（没有子节点的维度）
-            # 收集所有作为父节点的维度ID
-            parent_node_ids = {d.parent_id for d in all_dimensions if d.parent_id in dimension_map}
-            leaf_dimensions = [
-                d for d in sequence_dimensions
-                if d.node_id not in parent_node_ids
-            ]
-            
-            # 汇总末级维度的价值
-            sequence_value = sum((d.value or Decimal("0")) for d in leaf_dimensions)
+            # 汇总一级维度的价值（会递归汇总所有子孙节点）
+            sequence_value = Decimal("0")
+            for dim in first_level_dimensions:
+                dim_value = calculate_sum_from_children(dim.node_id)
+                sequence_value += dim_value
             
             # 创建序列结果记录
             seq_result = CalculationResult(

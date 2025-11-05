@@ -206,3 +206,98 @@ export function testNodeCode(id: number, data: { script: string; test_params?: a
     data
   })
 }
+
+// ==================== 模型版本导入 ====================
+
+export interface ImportableVersion {
+  id: number
+  version: string
+  name: string
+  description?: string
+  hospital_id: number
+  hospital_name: string
+  created_at: string
+}
+
+export interface VersionPreview {
+  id: number
+  version: string
+  name: string
+  description?: string
+  hospital_name: string
+  node_count: number
+  workflow_count: number
+  step_count: number
+  created_at: string
+}
+
+export interface ModelVersionImportRequest {
+  source_version_id: number
+  import_type: 'structure_only' | 'with_workflows'
+  version: string
+  name: string
+  description?: string
+}
+
+export interface ModelVersionImportResponse {
+  id: number
+  version: string
+  name: string
+  statistics: {
+    node_count: number
+    workflow_count: number
+    step_count: number
+  }
+  warnings: string[]
+}
+
+export interface ImportInfo {
+  is_imported: boolean
+  source_version?: string
+  source_hospital_name?: string
+  import_type?: string
+  import_time?: string
+  importer_name?: string
+}
+
+/**
+ * 获取可导入的模型版本列表
+ */
+export function getImportableVersions(params?: { skip?: number; limit?: number; search?: string }) {
+  return request<{ total: number; items: ImportableVersion[] }>({
+    url: '/model-versions/importable',
+    method: 'get',
+    params
+  })
+}
+
+/**
+ * 预览模型版本详情
+ */
+export function previewVersion(id: number) {
+  return request<VersionPreview>({
+    url: `/model-versions/${id}/preview`,
+    method: 'get'
+  })
+}
+
+/**
+ * 导入模型版本
+ */
+export function importVersion(data: ModelVersionImportRequest) {
+  return request<ModelVersionImportResponse>({
+    url: '/model-versions/import',
+    method: 'post',
+    data
+  })
+}
+
+/**
+ * 获取模型版本导入信息
+ */
+export function getImportInfo(id: number) {
+  return request<ImportInfo>({
+    url: `/model-versions/${id}/import-info`,
+    method: 'get'
+  })
+}

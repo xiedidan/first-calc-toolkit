@@ -202,6 +202,10 @@
 | `/model-versions` | GET | 获取模型版本列表 | 模型设计师/管理员 |
 | `/model-versions` | POST | 创建新模型版本 | 模型设计师/管理员 |
 | `/model-versions/{id}/activate` | PUT | 激活指定模型版本 | 模型设计师/管理员 |
+| `/model-versions/importable` | GET | 获取可导入的模型版本列表 | 模型设计师/管理员 |
+| `/model-versions/{id}/preview` | GET | 预览模型版本详情（用于导入） | 模型设计师/管理员 |
+| `/model-versions/import` | POST | 导入模型版本 | 模型设计师/管理员 |
+| `/model-versions/{id}/import-info` | GET | 获取模型版本导入信息 | 模型设计师/管理员 |
 | `/model-nodes` | GET | 获取指定版本的模型结构 | 模型设计师/管理员 |
 | `/model-nodes` | POST | 创建模型节点 | 模型设计师/管理员 |
 | `/model-nodes/{id}` | PUT | 更新模型节点 | 模型设计师/管理员 |
@@ -247,6 +251,196 @@
 #### 3.1.3. 激活模型版本
 - **接口**: `PUT /model-versions/{id}/activate`
 - **描述**: 激活指定模型版本
+
+#### 3.1.4. 获取可导入的模型版本列表
+- **接口**: `GET /model-versions/importable`
+- **描述**: 获取可导入的模型版本列表（其他医疗机构的版本）
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| skip | integer | 否 | 跳过数量，默认0 |
+| limit | integer | 否 | 每页数量，默认20 |
+| search | string | 否 | 搜索关键词（版本号、名称、医疗机构名称） |
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| total | integer | 总数量 |
+| items | array | 版本列表 |
+| items[].id | integer | 版本ID |
+| items[].version | string | 版本号 |
+| items[].name | string | 版本名称 |
+| items[].description | string | 版本描述 |
+| items[].hospital_id | integer | 所属医疗机构ID |
+| items[].hospital_name | string | 所属医疗机构名称 |
+| items[].created_at | string | 创建时间 |
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "total": 5,
+    "items": [
+      {
+        "id": 10,
+        "version": "v1.0",
+        "name": "2025年标准版",
+        "description": "2025年业务价值评估标准版本",
+        "hospital_id": 2,
+        "hospital_name": "某某医院",
+        "created_at": "2025-10-20T10:00:00"
+      }
+    ]
+  }
+}
+```
+
+#### 3.1.5. 预览模型版本详情
+- **接口**: `GET /model-versions/{id}/preview`
+- **描述**: 预览模型版本详情（用于导入前查看）
+
+**路径参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| id | integer | 是 | 版本ID |
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| id | integer | 版本ID |
+| version | string | 版本号 |
+| name | string | 版本名称 |
+| description | string | 版本描述 |
+| hospital_name | string | 所属医疗机构名称 |
+| node_count | integer | 模型节点数量 |
+| workflow_count | integer | 计算流程数量 |
+| step_count | integer | 计算步骤数量 |
+| created_at | string | 创建时间 |
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": 10,
+    "version": "v1.0",
+    "name": "2025年标准版",
+    "description": "2025年业务价值评估标准版本",
+    "hospital_name": "某某医院",
+    "node_count": 45,
+    "workflow_count": 3,
+    "step_count": 15,
+    "created_at": "2025-10-20T10:00:00"
+  }
+}
+```
+
+#### 3.1.6. 导入模型版本
+- **接口**: `POST /model-versions/import`
+- **描述**: 导入模型版本
+
+**请求参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| source_version_id | integer | 是 | 源版本ID |
+| import_type | string | 是 | 导入类型（structure_only/with_workflows） |
+| version | string | 是 | 新版本号 |
+| name | string | 是 | 新版本名称 |
+| description | string | 否 | 新版本描述 |
+
+**请求示例**:
+```json
+{
+  "source_version_id": 10,
+  "import_type": "with_workflows",
+  "version": "v1.0-imported",
+  "name": "2025年标准版（导入）",
+  "description": "从某某医院导入"
+}
+```
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| id | integer | 新版本ID |
+| version | string | 新版本号 |
+| name | string | 新版本名称 |
+| statistics | object | 导入统计信息 |
+| statistics.node_count | integer | 导入的节点数量 |
+| statistics.workflow_count | integer | 导入的流程数量 |
+| statistics.step_count | integer | 导入的步骤数量 |
+| warnings | array | 警告信息列表 |
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": 15,
+    "version": "v1.0-imported",
+    "name": "2025年标准版（导入）",
+    "statistics": {
+      "node_count": 45,
+      "workflow_count": 3,
+      "step_count": 15
+    },
+    "warnings": [
+      "计算步骤 '门诊工作量统计' 引用的数据源在目标医疗机构不存在，已设置为使用默认数据源"
+    ]
+  }
+}
+```
+
+#### 3.1.7. 获取模型版本导入信息
+- **接口**: `GET /model-versions/{id}/import-info`
+- **描述**: 获取模型版本的导入信息
+
+**路径参数**:
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| id | integer | 是 | 版本ID |
+
+**响应数据**:
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| is_imported | boolean | 是否为导入版本 |
+| source_version | string | 源版本号（如果是导入版本） |
+| source_hospital_name | string | 源医疗机构名称（如果是导入版本） |
+| import_type | string | 导入类型（如果是导入版本） |
+| import_time | string | 导入时间（如果是导入版本） |
+| importer_name | string | 导入用户名（如果是导入版本） |
+
+**响应示例（导入版本）**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "is_imported": true,
+    "source_version": "v1.0",
+    "source_hospital_name": "某某医院",
+    "import_type": "with_workflows",
+    "import_time": "2025-11-05T14:30:00",
+    "importer_name": "admin"
+  }
+}
+```
+
+**响应示例（本地创建）**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "is_imported": false
+  }
+}
+```
 
 ### 3.2. 模型结构管理
 

@@ -15,9 +15,124 @@ from app.schemas.model_version import (
     ModelVersionResponse,
     ModelVersionListResponse,
 )
+from app.utils.hospital_filter import (
+    apply_hospital_filter,
+    get_current_hospital_id_or_raise,
+    validate_hospital_access,
+    set_hospital_id_for_create,
+)
 
 router = APIRouter()
 
+
+# ==================== 模型版本导入相关API（必须在 /{version_id} 之前定义）====================
+
+from app.models.hospital import Hospital
+from app.models.calculation_workflow import CalculationWorkflow
+from app.models.calculation_step import CalculationStep
+from app.models.model_version_import import ModelVersionImport
+from app.schemas.model_version import (
+    ImportableVersionListResponse,
+    ImportableVersionResponse,
+    VersionPreviewResponse,
+    ModelVersionImportRequest,
+    ModelVersionImportResponse,
+    ImportInfoResponse,
+)
+from app.services.model_version_import_service import ModelVersionImportService
+from sqlalchemy import func, and_
+
+
+@router.get("/importable", response_model=ImportableVersionListResponse)
+def get_importable_versions(
+    skip: int = 0,
+    limit: int = 20,
+    search: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取可导入的模型版本列表（所有医疗机构的版本，管理员可见）"""
+    # 查询所有医疗机构的模型版本（管理员可以看到所有）
+    query = db.query(
+        ModelVersion,
+        Hospital.name.label("hospital_name")
+    ).join(
+        Hospital, ModelVersion.hospital_id == Hospital.id
+    )
+    
+    # 搜索过滤
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.filter(
+            (ModelVersion.version.ilike(search_pattern)) |
+            (ModelVersion.name.ilike(search_pattern)) |
+            (Hospital.name.ilike(search_pattern))
+        )
+    
+    # 按创建时间倒序排列
+    query = query.order_by(ModelVersion.created_at.desc())
+    
+    total = query.count()
+    results = query.offset(skip).limit(limit).all()
+    
+    # 构造响应
+    items = []
+    for version, hospital_name in results:
+        items.append(ImportableVersionResponse(
+            id=version.id,
+            version=version.version,
+            name=version.name,
+            description=version.description,
+            hospital_id=version.hospital_id,
+            hospital_name=hospital_name,
+            created_at=version.created_at
+        ))
+    
+    return {"total": total, "items": items}
+
+
+@router.post("/import", response_model=ModelVersionImportResponse)
+def import_version(
+    request: ModelVersionImportRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """导入模型版本"""
+    # 获取当前医疗机构ID
+    current_hospital_id = get_current_hospital_id_or_raise()
+    
+    # 验证导入类型
+    if request.import_type not in ["structure_only", "with_workflows"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="无效的导入类型"
+        )
+    
+    # 创建导入服务并执行导入
+    import_service = ModelVersionImportService(db)
+    
+    try:
+        result = import_service.import_model_version(
+            request=request,
+            target_hospital_id=current_hospital_id,
+            user_id=current_user.id
+        )
+        
+        return ModelVersionImportResponse(**result)
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"导入失败: {str(e)}"
+        )
+
+
+# ==================== 基础模型版本管理API ====================
 
 @router.get("", response_model=ModelVersionListResponse)
 def get_model_versions(
@@ -29,6 +144,9 @@ def get_model_versions(
 ):
     """获取模型版本列表"""
     query = db.query(ModelVersion)
+    
+    # 应用医疗机构过滤
+    query = apply_hospital_filter(query, ModelVersion, required=True)
     
     # 搜索过滤
     if search:
@@ -55,8 +173,13 @@ def create_model_version(
     current_user: User = Depends(get_current_user),
 ):
     """创建模型版本"""
-    # 检查版本号是否已存在
-    existing = db.query(ModelVersion).filter(ModelVersion.version == version_in.version).first()
+    # 获取当前医疗机构ID
+    hospital_id = get_current_hospital_id_or_raise()
+    
+    # 检查版本号是否已存在（同一医疗机构内）
+    query = db.query(ModelVersion).filter(ModelVersion.version == version_in.version)
+    query = apply_hospital_filter(query, ModelVersion, required=True)
+    existing = query.first()
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -68,6 +191,7 @@ def create_model_version(
         version=version_in.version,
         name=version_in.name,
         description=version_in.description,
+        hospital_id=hospital_id,
     )
     db.add(db_version)
     db.commit()
@@ -75,12 +199,17 @@ def create_model_version(
     
     # 如果指定了基础版本，复制其结构
     if version_in.base_version_id:
-        base_version = db.query(ModelVersion).filter(ModelVersion.id == version_in.base_version_id).first()
+        query = db.query(ModelVersion).filter(ModelVersion.id == version_in.base_version_id)
+        query = apply_hospital_filter(query, ModelVersion, required=True)
+        base_version = query.first()
         if not base_version:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="基础版本不存在"
             )
+        
+        # 验证基础版本属于当前医疗机构
+        validate_hospital_access(db, base_version, hospital_id)
         
         # 复制节点结构
         _copy_nodes(db, base_version.id, db_version.id)
@@ -95,7 +224,9 @@ def get_model_version(
     current_user: User = Depends(get_current_user),
 ):
     """获取模型版本详情"""
-    version = db.query(ModelVersion).filter(ModelVersion.id == version_id).first()
+    query = db.query(ModelVersion).filter(ModelVersion.id == version_id)
+    query = apply_hospital_filter(query, ModelVersion, required=True)
+    version = query.first()
     if not version:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -112,12 +243,17 @@ def update_model_version(
     current_user: User = Depends(get_current_user),
 ):
     """更新模型版本"""
-    version = db.query(ModelVersion).filter(ModelVersion.id == version_id).first()
+    query = db.query(ModelVersion).filter(ModelVersion.id == version_id)
+    query = apply_hospital_filter(query, ModelVersion, required=True)
+    version = query.first()
     if not version:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="模型版本不存在"
         )
+    
+    # 验证数据所属医疗机构
+    validate_hospital_access(db, version)
     
     # 更新字段
     if version_in.name is not None:
@@ -137,12 +273,17 @@ def delete_model_version(
     current_user: User = Depends(get_current_user),
 ):
     """删除模型版本"""
-    version = db.query(ModelVersion).filter(ModelVersion.id == version_id).first()
+    query = db.query(ModelVersion).filter(ModelVersion.id == version_id)
+    query = apply_hospital_filter(query, ModelVersion, required=True)
+    version = query.first()
     if not version:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="模型版本不存在"
         )
+    
+    # 验证数据所属医疗机构
+    validate_hospital_access(db, version)
     
     # 不允许删除激活的版本
     if version.is_active:
@@ -162,15 +303,22 @@ def activate_model_version(
     current_user: User = Depends(get_current_user),
 ):
     """激活模型版本"""
-    version = db.query(ModelVersion).filter(ModelVersion.id == version_id).first()
+    query = db.query(ModelVersion).filter(ModelVersion.id == version_id)
+    query = apply_hospital_filter(query, ModelVersion, required=True)
+    version = query.first()
     if not version:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="模型版本不存在"
         )
     
-    # 取消其他版本的激活状态
-    db.query(ModelVersion).update({"is_active": False})
+    # 验证数据所属医疗机构
+    validate_hospital_access(db, version)
+    
+    # 取消当前医疗机构其他版本的激活状态
+    query = db.query(ModelVersion)
+    query = apply_hospital_filter(query, ModelVersion, required=True)
+    query.update({"is_active": False}, synchronize_session=False)
     
     # 激活当前版本
     version.is_active = True
@@ -219,3 +367,111 @@ def _copy_node_recursive(db: Session, source_node: ModelNode, target_version_id:
     # 递归复制子节点
     for child in source_node.children:
         _copy_node_recursive(db, child, target_version_id, new_node.id)
+
+
+# ==================== 版本详情相关API（带路径参数）====================
+
+@router.get("/{version_id}/preview", response_model=VersionPreviewResponse)
+def preview_version(
+    version_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """预览模型版本详情（用于导入前查看）"""
+    # 查询版本信息
+    version_query = db.query(
+        ModelVersion,
+        Hospital.name.label("hospital_name")
+    ).join(
+        Hospital, ModelVersion.hospital_id == Hospital.id
+    ).filter(
+        ModelVersion.id == version_id
+    )
+    
+    result = version_query.first()
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="模型版本不存在"
+        )
+    
+    version, hospital_name = result
+    
+    # 统计节点数量
+    node_count = db.query(func.count(ModelNode.id)).filter(
+        ModelNode.version_id == version_id
+    ).scalar()
+    
+    # 统计计算流程数量
+    workflow_count = db.query(func.count(CalculationWorkflow.id)).filter(
+        CalculationWorkflow.version_id == version_id
+    ).scalar()
+    
+    # 统计计算步骤数量
+    step_count = db.query(func.count(CalculationStep.id)).join(
+        CalculationWorkflow, CalculationStep.workflow_id == CalculationWorkflow.id
+    ).filter(
+        CalculationWorkflow.version_id == version_id
+    ).scalar()
+    
+    return VersionPreviewResponse(
+        id=version.id,
+        version=version.version,
+        name=version.name,
+        description=version.description,
+        hospital_name=hospital_name,
+        node_count=node_count or 0,
+        workflow_count=workflow_count or 0,
+        step_count=step_count or 0,
+        created_at=version.created_at
+    )
+
+
+@router.get("/{version_id}/import-info", response_model=ImportInfoResponse)
+def get_import_info(
+    version_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取模型版本的导入信息"""
+    # 验证版本存在且属于当前医疗机构
+    query = db.query(ModelVersion).filter(ModelVersion.id == version_id)
+    query = apply_hospital_filter(query, ModelVersion, required=True)
+    version = query.first()
+    
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="模型版本不存在"
+        )
+    
+    # 查询导入记录
+    import_record = db.query(
+        ModelVersionImport,
+        ModelVersion.version.label("source_version"),
+        Hospital.name.label("source_hospital_name"),
+        User.username.label("importer_name")
+    ).join(
+        ModelVersion, ModelVersionImport.source_version_id == ModelVersion.id
+    ).join(
+        Hospital, ModelVersionImport.source_hospital_id == Hospital.id
+    ).join(
+        User, ModelVersionImport.imported_by == User.id
+    ).filter(
+        ModelVersionImport.target_version_id == version_id
+    ).first()
+    
+    if not import_record:
+        # 不是导入的版本
+        return ImportInfoResponse(is_imported=False)
+    
+    record, source_version, source_hospital_name, importer_name = import_record
+    
+    return ImportInfoResponse(
+        is_imported=True,
+        source_version=source_version,
+        source_hospital_name=source_hospital_name,
+        import_type=record.import_type,
+        import_time=record.import_time,
+        importer_name=importer_name
+    )

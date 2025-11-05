@@ -17,6 +17,10 @@ from app.schemas.model_node import (
     TestCodeRequest,
     TestCodeResponse,
 )
+from app.utils.hospital_filter import (
+    apply_hospital_filter,
+    validate_hospital_access,
+)
 
 router = APIRouter()
 
@@ -29,8 +33,10 @@ def get_model_nodes(
     current_user: User = Depends(get_current_user),
 ):
     """获取模型节点列表"""
-    # 验证版本是否存在
-    version = db.query(ModelVersion).filter(ModelVersion.id == version_id).first()
+    # 验证版本是否存在且属于当前医疗机构
+    query = db.query(ModelVersion).filter(ModelVersion.id == version_id)
+    query = apply_hospital_filter(query, ModelVersion, required=True)
+    version = query.first()
     if not version:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -67,13 +73,18 @@ def create_model_node(
     current_user: User = Depends(get_current_user),
 ):
     """创建模型节点"""
-    # 验证版本是否存在
-    version = db.query(ModelVersion).filter(ModelVersion.id == node_in.version_id).first()
+    # 验证版本是否存在且属于当前医疗机构
+    query = db.query(ModelVersion).filter(ModelVersion.id == node_in.version_id)
+    query = apply_hospital_filter(query, ModelVersion, required=True)
+    version = query.first()
     if not version:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="模型版本不存在"
         )
+    
+    # 验证版本所属医疗机构
+    validate_hospital_access(db, version)
     
     # 如果指定了父节点，验证父节点是否存在
     if node_in.parent_id:
@@ -158,6 +169,9 @@ def get_model_node(
             detail="模型节点不存在"
         )
     
+    # 验证节点所属的版本是否属于当前医疗机构
+    validate_hospital_access(db, node.version)
+    
     # 加载子节点
     _load_children(db, node)
     
@@ -178,6 +192,9 @@ def update_model_node(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="模型节点不存在"
         )
+    
+    # 验证节点所属的版本是否属于当前医疗机构
+    validate_hospital_access(db, node.version)
     
     # 如果更新编码，检查是否重复
     if node_in.code and node_in.code != node.code:
@@ -247,6 +264,9 @@ def delete_model_node(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="模型节点不存在"
         )
+    
+    # 验证节点所属的版本是否属于当前医疗机构
+    validate_hospital_access(db, node.version)
     
     # 删除节点（会级联删除子节点）
     db.delete(node)

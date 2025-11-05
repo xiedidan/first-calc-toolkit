@@ -36,6 +36,13 @@ from .data_source import (
     DBType,
     ConnectionStatus,
 )
+from .hospital import (
+    Hospital,
+    HospitalCreate,
+    HospitalUpdate,
+    HospitalList,
+    HospitalActivate,
+)
 
 __all__ = [
     "User",
@@ -68,4 +75,9 @@ __all__ = [
     "DataSourcePoolStatus",
     "DBType",
     "ConnectionStatus",
+    "Hospital",
+    "HospitalCreate",
+    "HospitalUpdate",
+    "HospitalList",
+    "HospitalActivate",
 ]

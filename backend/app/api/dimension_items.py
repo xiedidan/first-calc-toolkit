@@ -9,6 +9,10 @@ from sqlalchemy import or_, and_
 from app.api import deps
 from app.models.dimension_item_mapping import DimensionItemMapping
 from app.models.charge_item import ChargeItem
+from app.utils.hospital_filter import (
+    apply_hospital_filter,
+    get_current_hospital_id_or_raise,
+)
 from app.schemas.dimension_item import (
     DimensionItemMapping as DimensionItemMappingSchema,
     DimensionItemMappingCreate,
@@ -41,6 +45,16 @@ def get_dimension_items(
     """获取维度的收费项目目录"""
     from app.models.model_node import ModelNode
     
+    # 获取当前医疗机构ID
+    hospital_id = get_current_hospital_id_or_raise()
+    
+    # 获取当前激活的模型版本ID
+    from app.models.model_version import ModelVersion
+    active_version = db.query(ModelVersion).filter(
+        ModelVersion.hospital_id == hospital_id,
+        ModelVersion.is_active == True
+    ).first()
+    
     query = db.query(
         DimensionItemMapping.id,
         DimensionItemMapping.dimension_code,
@@ -49,12 +63,20 @@ def get_dimension_items(
         ChargeItem.item_name,
         ChargeItem.item_category,
         ModelNode.name.label('dimension_name')
+    ).filter(
+        DimensionItemMapping.hospital_id == hospital_id  # 医院隔离
     ).outerjoin(  # 使用LEFT JOIN，即使收费项目不存在也显示
         ChargeItem,
-        DimensionItemMapping.item_code == ChargeItem.item_code
-    ).outerjoin(  # LEFT JOIN维度节点表获取维度名称
+        and_(
+            DimensionItemMapping.item_code == ChargeItem.item_code,
+            ChargeItem.hospital_id == hospital_id  # 收费项目也要医院隔离
+        )
+    ).outerjoin(  # LEFT JOIN维度节点表获取维度名称，限定为当前激活版本
         ModelNode,
-        DimensionItemMapping.dimension_code == ModelNode.code
+        and_(
+            DimensionItemMapping.dimension_code == ModelNode.code,
+            ModelNode.version_id == active_version.id if active_version else None
+        )
     )
     
     # 如果指定了维度编码，则过滤（支持单个或多个）
@@ -136,20 +158,25 @@ def create_dimension_items(
     current_user = Depends(deps.get_current_user),
 ):
     """为维度添加收费项目"""
+    # 获取当前医疗机构ID
+    hospital_id = get_current_hospital_id_or_raise()
+    
     added_count = 0
     skipped_count = 0
     
     for item_code in mapping_in.item_codes:
-        # 检查收费项目是否存在
+        # 检查收费项目是否存在（且属于当前医疗机构）
         charge_item = db.query(ChargeItem).filter(
-            ChargeItem.item_code == item_code
+            ChargeItem.item_code == item_code,
+            ChargeItem.hospital_id == hospital_id
         ).first()
         if not charge_item:
             skipped_count += 1
             continue
         
-        # 检查是否已经关联
+        # 检查是否已经关联（在当前医疗机构内）
         existing = db.query(DimensionItemMapping).filter(
+            DimensionItemMapping.hospital_id == hospital_id,
             DimensionItemMapping.dimension_code == mapping_in.dimension_code,
             DimensionItemMapping.item_code == item_code
         ).first()
@@ -157,8 +184,9 @@ def create_dimension_items(
             skipped_count += 1
             continue
         
-        # 创建映射
+        # 创建映射（设置hospital_id）
         mapping = DimensionItemMapping(
+            hospital_id=hospital_id,
             dimension_code=mapping_in.dimension_code,
             item_code=item_code
         )
@@ -182,8 +210,13 @@ def update_dimension_item(
     current_user = Depends(deps.get_current_user),
 ):
     """更新收费项目的维度"""
+    # 获取当前医疗机构ID
+    hospital_id = get_current_hospital_id_or_raise()
+    
+    # 查询映射关系（必须属于当前医疗机构）
     mapping = db.query(DimensionItemMapping).filter(
-        DimensionItemMapping.id == mapping_id
+        DimensionItemMapping.id == mapping_id,
+        DimensionItemMapping.hospital_id == hospital_id
     ).first()
     if not mapping:
         raise HTTPException(status_code=404, detail="映射关系不存在")
@@ -194,8 +227,9 @@ def update_dimension_item(
     if not new_dimension:
         raise HTTPException(status_code=404, detail="目标维度不存在")
     
-    # 检查新的映射关系是否已存在
+    # 检查新的映射关系是否已存在（在当前医疗机构内）
     existing = db.query(DimensionItemMapping).filter(
+        DimensionItemMapping.hospital_id == hospital_id,
         DimensionItemMapping.dimension_code == new_dimension_code,
         DimensionItemMapping.item_code == mapping.item_code,
         DimensionItemMapping.id != mapping_id
@@ -217,8 +251,13 @@ def delete_dimension_item(
     current_user = Depends(deps.get_current_user),
 ):
     """删除维度关联的收费项目"""
+    # 获取当前医疗机构ID
+    hospital_id = get_current_hospital_id_or_raise()
+    
+    # 查询映射关系（必须属于当前医疗机构）
     mapping = db.query(DimensionItemMapping).filter(
-        DimensionItemMapping.id == mapping_id
+        DimensionItemMapping.id == mapping_id,
+        DimensionItemMapping.hospital_id == hospital_id
     ).first()
     if not mapping:
         raise HTTPException(status_code=404, detail="映射关系不存在")
@@ -236,7 +275,12 @@ def clear_all_dimension_items(
     current_user = Depends(deps.get_current_user),
 ):
     """清空指定维度的所有收费项目"""
+    # 获取当前医疗机构ID
+    hospital_id = get_current_hospital_id_or_raise()
+    
+    # 只删除当前医疗机构的映射
     deleted_count = db.query(DimensionItemMapping).filter(
+        DimensionItemMapping.hospital_id == hospital_id,
         DimensionItemMapping.dimension_code == dimension_code
     ).delete()
     
@@ -248,17 +292,46 @@ def clear_all_dimension_items(
     }
 
 
+@router.delete("/clear-all")
+def clear_all_dimension_items_for_hospital(
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user),
+):
+    """清空当前医院的所有维度目录数据"""
+    # 获取当前医疗机构ID
+    hospital_id = get_current_hospital_id_or_raise()
+    
+    # 删除当前医疗机构的所有维度目录映射
+    deleted_count = db.query(DimensionItemMapping).filter(
+        DimensionItemMapping.hospital_id == hospital_id
+    ).delete()
+    
+    db.commit()
+    
+    return {
+        "message": f"已清空当前医院的所有维度目录数据",
+        "deleted_count": deleted_count
+    }
+
+
 @router.delete("/orphans/clear-all")
 def clear_all_orphan_items(
     db: Session = Depends(deps.get_db),
     current_user = Depends(deps.get_current_user),
 ):
     """清除所有孤儿记录（收费编码不在收费项目表中的记录）"""
-    # 查询所有孤儿记录的ID
+    # 获取当前医疗机构ID
+    hospital_id = get_current_hospital_id_or_raise()
+    
+    # 查询当前医疗机构的所有孤儿记录的ID
     orphan_ids = db.query(DimensionItemMapping.id).outerjoin(
         ChargeItem,
-        DimensionItemMapping.item_code == ChargeItem.item_code
+        and_(
+            DimensionItemMapping.item_code == ChargeItem.item_code,
+            ChargeItem.hospital_id == hospital_id
+        )
     ).filter(
+        DimensionItemMapping.hospital_id == hospital_id,
         ChargeItem.item_code.is_(None)
     ).all()
     
@@ -292,7 +365,12 @@ def search_charge_items(
     current_user = Depends(deps.get_current_user),
 ):
     """搜索收费项目（用于添加时搜索）"""
+    # 获取当前医疗机构ID
+    hospital_id = get_current_hospital_id_or_raise()
+    
+    # 只搜索当前医疗机构的收费项目
     query = db.query(ChargeItem).filter(
+        ChargeItem.hospital_id == hospital_id,
         or_(
             ChargeItem.item_code.contains(keyword),
             ChargeItem.item_name.contains(keyword),
@@ -300,9 +378,10 @@ def search_charge_items(
         )
     )
     
-    # 如果指定了维度编码，排除已关联的项目
+    # 如果指定了维度编码，排除已关联的项目（在当前医疗机构内）
     if dimension_code:
         linked_codes = db.query(DimensionItemMapping.item_code).filter(
+            DimensionItemMapping.hospital_id == hospital_id,
             DimensionItemMapping.dimension_code == dimension_code
         ).all()
         linked_codes = [code[0] for code in linked_codes]

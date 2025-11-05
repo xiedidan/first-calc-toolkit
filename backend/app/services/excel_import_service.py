@@ -162,7 +162,8 @@ class ExcelImportService:
         db: Session,
         model_class: Any,
         validate_func: Optional[callable] = None,
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[callable] = None,
+        preprocess_func: Optional[callable] = None
     ) -> Dict[str, Any]:
         """
         执行数据导入
@@ -247,6 +248,10 @@ class ExcelImportService:
                         })
                         continue
                 
+                # 数据预处理
+                if preprocess_func:
+                    row_data = preprocess_func(row_data)
+                
                 # 创建模型实例
                 instance = model_class(**row_data)
                 db.add(instance)
@@ -307,7 +312,8 @@ class ExcelImportService:
         db: Session,
         model_class: Any,
         validate_func: Optional[callable] = None,
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[callable] = None,
+        preprocess_func: Optional[callable] = None
     ) -> Dict[str, Any]:
         """
         执行数据导入（带进度回调）
@@ -320,5 +326,6 @@ class ExcelImportService:
             db,
             model_class,
             validate_func,
-            progress_callback
+            progress_callback,
+            preprocess_func
         )

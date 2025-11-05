@@ -32,7 +32,10 @@ def get_charge_items(
     sort_order: Optional[str] = Query("asc", description="排序方向"),
 ):
     """获取收费项目列表"""
+    from app.utils.hospital_filter import apply_hospital_filter
+    
     query = db.query(ChargeItem)
+    query = apply_hospital_filter(query, ChargeItem, current_user)
     
     # 关键词搜索
     if keyword:
@@ -72,15 +75,22 @@ def create_charge_item(
     current_user = Depends(deps.get_current_user),
 ):
     """创建收费项目"""
-    # 检查项目编码是否已存在
+    from app.utils.hospital_filter import get_user_hospital_id
+    
+    hospital_id = get_user_hospital_id(current_user)
+    
+    # 检查项目编码是否已存在（同一医疗机构内）
     existing = db.query(ChargeItem).filter(
+        ChargeItem.hospital_id == hospital_id,
         ChargeItem.item_code == item_in.item_code
     ).first()
     if existing:
         raise HTTPException(status_code=400, detail="收费项目编码已存在")
     
     # 创建收费项目
-    item = ChargeItem(**item_in.model_dump())
+    item_data = item_in.model_dump()
+    item_data['hospital_id'] = hospital_id
+    item = ChargeItem(**item_data)
     db.add(item)
     db.commit()
     db.refresh(item)
@@ -94,12 +104,26 @@ def clear_all_charge_items(
     current_user = Depends(deps.get_current_user),
 ):
     """清空所有收费项目（仅用于测试）"""
+    from app.utils.hospital_filter import get_user_hospital_id
+    
     try:
-        # 先删除所有维度目录映射
-        db.query(DimensionItemMapping).delete()
+        hospital_id = get_user_hospital_id(current_user)
         
-        # 再删除所有收费项目
-        count = db.query(ChargeItem).delete()
+        # 先删除当前医疗机构的维度目录映射
+        charge_item_ids = db.query(ChargeItem.id).filter(
+            ChargeItem.hospital_id == hospital_id
+        ).all()
+        charge_item_ids = [item[0] for item in charge_item_ids]
+        
+        if charge_item_ids:
+            db.query(DimensionItemMapping).filter(
+                DimensionItemMapping.charge_item_id.in_(charge_item_ids)
+            ).delete(synchronize_session=False)
+        
+        # 再删除当前医疗机构的收费项目
+        count = db.query(ChargeItem).filter(
+            ChargeItem.hospital_id == hospital_id
+        ).delete()
         
         db.commit()
         
@@ -119,7 +143,13 @@ def get_charge_item(
     current_user = Depends(deps.get_current_user),
 ):
     """获取收费项目详情"""
-    item = db.query(ChargeItem).filter(ChargeItem.id == item_id).first()
+    from app.utils.hospital_filter import get_user_hospital_id
+    
+    hospital_id = get_user_hospital_id(current_user)
+    item = db.query(ChargeItem).filter(
+        ChargeItem.id == item_id,
+        ChargeItem.hospital_id == hospital_id
+    ).first()
     if not item:
         raise HTTPException(status_code=404, detail="收费项目不存在")
     
@@ -134,7 +164,13 @@ def update_charge_item(
     current_user = Depends(deps.get_current_user),
 ):
     """更新收费项目信息"""
-    item = db.query(ChargeItem).filter(ChargeItem.id == item_id).first()
+    from app.utils.hospital_filter import get_user_hospital_id
+    
+    hospital_id = get_user_hospital_id(current_user)
+    item = db.query(ChargeItem).filter(
+        ChargeItem.id == item_id,
+        ChargeItem.hospital_id == hospital_id
+    ).first()
     if not item:
         raise HTTPException(status_code=404, detail="收费项目不存在")
     
@@ -156,13 +192,19 @@ def delete_charge_item(
     current_user = Depends(deps.get_current_user),
 ):
     """删除收费项目"""
-    item = db.query(ChargeItem).filter(ChargeItem.id == item_id).first()
+    from app.utils.hospital_filter import get_user_hospital_id
+    
+    hospital_id = get_user_hospital_id(current_user)
+    item = db.query(ChargeItem).filter(
+        ChargeItem.id == item_id,
+        ChargeItem.hospital_id == hospital_id
+    ).first()
     if not item:
         raise HTTPException(status_code=404, detail="收费项目不存在")
     
     # 检查是否被维度目录引用
     mapping_count = db.query(DimensionItemMapping).filter(
-        DimensionItemMapping.item_code == item.item_code
+        DimensionItemMapping.charge_item_id == item.id
     ).count()
     if mapping_count > 0:
         raise HTTPException(
@@ -182,7 +224,11 @@ def get_categories(
     current_user = Depends(deps.get_current_user),
 ):
     """获取所有分类列表"""
+    from app.utils.hospital_filter import get_user_hospital_id
+    
+    hospital_id = get_user_hospital_id(current_user)
     categories = db.query(ChargeItem.item_category).distinct().filter(
+        ChargeItem.hospital_id == hospital_id,
         ChargeItem.item_category.isnot(None)
     ).all()
     return [cat[0] for cat in categories if cat[0]]
@@ -230,6 +276,9 @@ async def import_excel(
     import json
     from app.services.excel_import_service import ExcelImportService
     from app.config.import_configs import CHARGE_ITEM_IMPORT_CONFIG
+    from app.utils.hospital_filter import get_user_hospital_id
+    
+    hospital_id = get_user_hospital_id(current_user)
     
     # 验证文件格式
     if not file.filename or not file.filename.lower().endswith('.xlsx'):
@@ -259,8 +308,8 @@ async def import_excel(
     if async_mode:
         from app.tasks.import_tasks import import_charge_items_task
         
-        # 提交异步任务
-        task = import_charge_items_task.delay(content, mapping_dict)
+        # 提交异步任务（传递hospital_id）
+        task = import_charge_items_task.delay(content, mapping_dict, hospital_id)
         
         return {
             "task_id": task.id,
@@ -275,11 +324,17 @@ async def import_excel(
             item_code = row_data.get("item_code", "")
             if item_code:
                 existing = db.query(ChargeItem).filter(
+                    ChargeItem.hospital_id == hospital_id,
                     ChargeItem.item_code == item_code
                 ).first()
                 if existing:
                     return f"项目编码 {item_code} 已存在"
             return None
+        
+        # 数据预处理函数：添加hospital_id
+        def preprocess_row(row_data: dict) -> dict:
+            row_data['hospital_id'] = hospital_id
+            return row_data
         
         try:
             result = service.import_data(
@@ -287,7 +342,8 @@ async def import_excel(
                 mapping_dict,
                 db,
                 ChargeItem,
-                validate_charge_item
+                validate_charge_item,
+                preprocess_row
             )
             return result
         except Exception as e:

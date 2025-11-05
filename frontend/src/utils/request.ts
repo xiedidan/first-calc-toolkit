@@ -21,6 +21,13 @@ request.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
+    
+    // Add hospital ID to headers (for business APIs)
+    const hospitalId = localStorage.getItem('currentHospitalId')
+    if (hospitalId) {
+      config.headers['X-Hospital-ID'] = hospitalId
+    }
+    
     return config
   },
   (error) => {
@@ -44,6 +51,14 @@ request.interceptors.response.use(
       const data: any = error.response.data
 
       switch (status) {
+        case 400:
+          // Handle hospital not activated error
+          if (data.detail && data.detail.includes('激活医疗机构')) {
+            ElMessage.warning('请先选择医疗机构')
+          } else {
+            ElMessage.error(data.detail || '请求参数错误')
+          }
+          break
         case 401:
           // Only show message and redirect once
           if (!isRedirecting) {
@@ -52,6 +67,8 @@ request.interceptors.response.use(
             // Clear token and redirect to login
             localStorage.removeItem('access_token')
             localStorage.removeItem('user_info')
+            localStorage.removeItem('currentHospitalId')
+            localStorage.removeItem('currentHospital')
             // Use setTimeout to avoid multiple redirects
             setTimeout(() => {
               window.location.href = '/login'
@@ -59,7 +76,12 @@ request.interceptors.response.use(
           }
           break
         case 403:
-          ElMessage.error(data.detail || '没有权限访问')
+          // Handle hospital access denied error
+          if (data.detail && data.detail.includes('医疗机构')) {
+            ElMessage.error('您没有权限访问该医疗机构')
+          } else {
+            ElMessage.error(data.detail || '没有权限访问')
+          }
           break
         case 404:
           ElMessage.error(data.detail || '请求的资源不存在')

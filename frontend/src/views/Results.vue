@@ -25,7 +25,13 @@
             />
           </el-form-item>
           <el-form-item label="模型版本">
-            <el-select v-model="filterForm.model_version_id" placeholder="默认使用激活版本" @change="loadSummary" clearable>
+            <el-select 
+              v-model="filterForm.model_version_id" 
+              placeholder="默认使用激活版本" 
+              @change="loadSummary" 
+              clearable
+              style="width: 240px"
+            >
               <el-option
                 v-for="version in versions"
                 :key="version.id"
@@ -85,7 +91,7 @@
         </el-table-column>
         <el-table-column label="操作" width="120" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="viewDetail(row)" v-if="row.department_id !== 0">
+            <el-button link type="primary" @click="viewDetail(row)">
               查看明细
             </el-button>
           </template>
@@ -109,29 +115,32 @@
           <el-table 
             :data="detailData.doctor" 
             border 
+            stripe
             class="structure-table"
+            row-key="id"
+            :tree-props="{ children: 'children' }"
+            :default-expand-all="true"
           >
-            <el-table-column prop="level1" label="一级维度" min-width="120" align="left" />
-            <el-table-column prop="level2" label="二级维度" min-width="120" align="left" />
-            <el-table-column prop="level3" label="三级维度" min-width="120" align="left" />
-            <el-table-column prop="level4" label="四级维度" min-width="120" align="left" v-if="hasLevel4(detailData.doctor)" />
+            <el-table-column prop="dimension_name" label="维度名称（业务价值占比）" min-width="240" align="left">
+              <template #default="{ row }">
+                <span class="dimension-name">{{ row.dimension_name }}</span>
+                <span v-if="row.ratio != null" class="ratio-text">（{{ formatPercent(row.ratio) }}）</span>
+              </template>
+            </el-table-column>
             <el-table-column prop="workload" label="工作量" min-width="110" align="right">
               <template #default="{ row }">{{ formatNumber(row.workload) }}</template>
             </el-table-column>
-            <el-table-column prop="hospital_value" label="全院业务价值" min-width="120" align="right">
+            <el-table-column prop="hospital_value" label="全院业务价值" min-width="102" align="right">
               <template #default="{ row }">{{ formatValueOrDash(row.hospital_value) }}</template>
             </el-table-column>
-            <el-table-column prop="business_guide" label="业务导向" min-width="132" align="center">
+            <el-table-column prop="business_guide" label="业务导向" min-width="168" align="center">
               <template #default="{ row }">{{ row.business_guide || '-' }}</template>
             </el-table-column>
-            <el-table-column prop="dept_value" label="科室业务价值" min-width="120" align="right">
+            <el-table-column prop="dept_value" label="科室业务价值" min-width="102" align="right">
               <template #default="{ row }">{{ formatValueOrDash(row.dept_value) }}</template>
             </el-table-column>
-            <el-table-column prop="amount" label="金额" min-width="110" align="right">
+            <el-table-column prop="amount" label="业务价值金额" min-width="110" align="right">
               <template #default="{ row }">{{ formatNumber(row.amount) }}</template>
-            </el-table-column>
-            <el-table-column prop="ratio" label="占比" min-width="90" align="right">
-              <template #default="{ row }">{{ formatPercent(row.ratio) }}</template>
             </el-table-column>
           </el-table>
         </el-tab-pane>
@@ -142,29 +151,32 @@
           <el-table 
             :data="detailData.nurse" 
             border 
+            stripe
             class="structure-table"
+            row-key="id"
+            :tree-props="{ children: 'children' }"
+            :default-expand-all="true"
           >
-            <el-table-column prop="level1" label="一级维度" min-width="120" align="left" />
-            <el-table-column prop="level2" label="二级维度" min-width="120" align="left" />
-            <el-table-column prop="level3" label="三级维度" min-width="120" align="left" />
-            <el-table-column prop="level4" label="四级维度" min-width="120" align="left" v-if="hasLevel4(detailData.nurse)" />
+            <el-table-column prop="dimension_name" label="维度名称（业务价值占比）" min-width="240" align="left">
+              <template #default="{ row }">
+                <span class="dimension-name">{{ row.dimension_name }}</span>
+                <span v-if="row.ratio != null" class="ratio-text">（{{ formatPercent(row.ratio) }}）</span>
+              </template>
+            </el-table-column>
             <el-table-column prop="workload" label="工作量" min-width="110" align="right">
               <template #default="{ row }">{{ formatNumber(row.workload) }}</template>
             </el-table-column>
-            <el-table-column prop="hospital_value" label="全院业务价值" min-width="120" align="right">
+            <el-table-column prop="hospital_value" label="全院业务价值" min-width="102" align="right">
               <template #default="{ row }">{{ formatValueOrDash(row.hospital_value) }}</template>
             </el-table-column>
-            <el-table-column prop="business_guide" label="业务导向" min-width="132" align="center">
+            <el-table-column prop="business_guide" label="业务导向" min-width="168" align="center">
               <template #default="{ row }">{{ row.business_guide || '-' }}</template>
             </el-table-column>
-            <el-table-column prop="dept_value" label="科室业务价值" min-width="120" align="right">
+            <el-table-column prop="dept_value" label="科室业务价值" min-width="102" align="right">
               <template #default="{ row }">{{ formatValueOrDash(row.dept_value) }}</template>
             </el-table-column>
-            <el-table-column prop="amount" label="金额" min-width="110" align="right">
+            <el-table-column prop="amount" label="业务价值金额" min-width="110" align="right">
               <template #default="{ row }">{{ formatNumber(row.amount) }}</template>
-            </el-table-column>
-            <el-table-column prop="ratio" label="占比" min-width="90" align="right">
-              <template #default="{ row }">{{ formatPercent(row.ratio) }}</template>
             </el-table-column>
           </el-table>
         </el-tab-pane>
@@ -175,29 +187,32 @@
           <el-table 
             :data="detailData.tech" 
             border 
+            stripe
             class="structure-table"
+            row-key="id"
+            :tree-props="{ children: 'children' }"
+            :default-expand-all="true"
           >
-            <el-table-column prop="level1" label="一级维度" min-width="120" align="left" />
-            <el-table-column prop="level2" label="二级维度" min-width="120" align="left" />
-            <el-table-column prop="level3" label="三级维度" min-width="120" align="left" v-if="hasLevel3(detailData.tech)" />
-            <el-table-column prop="level4" label="四级维度" min-width="120" align="left" v-if="hasLevel4(detailData.tech)" />
+            <el-table-column prop="dimension_name" label="维度名称（业务价值占比）" min-width="240" align="left">
+              <template #default="{ row }">
+                <span class="dimension-name">{{ row.dimension_name }}</span>
+                <span v-if="row.ratio != null" class="ratio-text">（{{ formatPercent(row.ratio) }}）</span>
+              </template>
+            </el-table-column>
             <el-table-column prop="workload" label="工作量" min-width="110" align="right">
               <template #default="{ row }">{{ formatNumber(row.workload) }}</template>
             </el-table-column>
-            <el-table-column prop="hospital_value" label="全院业务价值" min-width="120" align="right">
+            <el-table-column prop="hospital_value" label="全院业务价值" min-width="102" align="right">
               <template #default="{ row }">{{ formatValueOrDash(row.hospital_value) }}</template>
             </el-table-column>
-            <el-table-column prop="business_guide" label="业务导向" min-width="132" align="center">
+            <el-table-column prop="business_guide" label="业务导向" min-width="168" align="center">
               <template #default="{ row }">{{ row.business_guide || '-' }}</template>
             </el-table-column>
-            <el-table-column prop="dept_value" label="科室业务价值" min-width="120" align="right">
+            <el-table-column prop="dept_value" label="科室业务价值" min-width="102" align="right">
               <template #default="{ row }">{{ formatValueOrDash(row.dept_value) }}</template>
             </el-table-column>
-            <el-table-column prop="amount" label="金额" min-width="110" align="right">
+            <el-table-column prop="amount" label="业务价值金额" min-width="110" align="right">
               <template #default="{ row }">{{ formatNumber(row.amount) }}</template>
-            </el-table-column>
-            <el-table-column prop="ratio" label="占比" min-width="90" align="right">
-              <template #default="{ row }">{{ formatPercent(row.ratio) }}</template>
             </el-table-column>
           </el-table>
         </el-tab-pane>
@@ -236,6 +251,12 @@ const loadVersions = async () => {
   try {
     const response: any = await getModelVersions({ skip: 0, limit: 1000 })
     versions.value = response.items || []
+    
+    // 默认选中激活的版本
+    const activeVersion = versions.value.find((v: any) => v.is_active)
+    if (activeVersion && !filterForm.model_version_id) {
+      filterForm.model_version_id = activeVersion.id
+    }
   } catch (error: any) {
     ElMessage.error('加载模型版本失败')
     console.error('加载模型版本错误:', error)
@@ -281,14 +302,29 @@ const viewDetail = async (row: any) => {
   }
   
   try {
-    const response: any = await request({
-      url: '/calculation/results/detail',
-      method: 'get',
-      params: {
-        dept_id: row.department_id,
-        task_id: taskId
-      }
-    })
+    let response: any
+    
+    // 判断是全院汇总还是单科室
+    if (row.department_id === 0) {
+      // 全院汇总明细
+      response = await request({
+        url: '/calculation/results/hospital-detail',
+        method: 'get',
+        params: {
+          task_id: taskId
+        }
+      })
+    } else {
+      // 单科室明细
+      response = await request({
+        url: '/calculation/results/detail',
+        method: 'get',
+        params: {
+          dept_id: row.department_id,
+          task_id: taskId
+        }
+      })
+    }
     
     detailData.value = response
     activeTab.value = 'doctor'
@@ -296,16 +332,6 @@ const viewDetail = async (row: any) => {
   } catch (error: any) {
     ElMessage.error(error.response?.data?.detail || '加载明细数据失败')
   }
-}
-
-// 检查是否有三级维度
-const hasLevel3 = (data: any[]) => {
-  return data.some(row => row.level3 !== null && row.level3 !== undefined)
-}
-
-// 检查是否有四级维度
-const hasLevel4 = (data: any[]) => {
-  return data.some(row => row.level4 !== null && row.level4 !== undefined)
 }
 
 // 格式化值或显示"-"
@@ -322,15 +348,27 @@ const exportSummary = async () => {
 
   exporting.value = true
   try {
-    await request({
+    const response = await request({
       url: '/calculation/results/export/summary',
-      method: 'post',
-      data: {
+      method: 'get',
+      params: {
         period: filterForm.period,
         model_version_id: filterForm.model_version_id
-      }
+      },
+      responseType: 'blob'
     })
-    ElMessage.success('导出任务已创建，请稍后下载')
+    
+    // 创建下载链接
+    const url = window.URL.createObjectURL(new Blob([response]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `科室业务价值汇总_${filterForm.period}.xlsx`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    
+    ElMessage.success('导出成功')
   } catch (error: any) {
     ElMessage.error(error.response?.data?.detail || '导出失败')
   } finally {
@@ -339,21 +377,34 @@ const exportSummary = async () => {
 }
 
 const exportDetail = async () => {
-  if (!route.query.task_id) {
-    ElMessage.warning('缺少任务ID')
+  const taskId = currentTaskId.value || route.query.task_id as string
+  if (!taskId) {
+    ElMessage.warning('缺少任务ID，无法导出明细')
     return
   }
 
   exporting.value = true
   try {
-    await request({
+    const response = await request({
       url: '/calculation/results/export/detail',
-      method: 'post',
-      data: {
-        task_id: route.query.task_id
-      }
+      method: 'get',
+      params: {
+        task_id: taskId
+      },
+      responseType: 'blob'
     })
-    ElMessage.success('导出任务已创建，请稍后下载')
+    
+    // 创建下载链接
+    const url = window.URL.createObjectURL(new Blob([response]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `业务价值明细表_${filterForm.period}.zip`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    
+    ElMessage.success('导出成功')
   } catch (error: any) {
     ElMessage.error(error.response?.data?.detail || '导出失败')
   } finally {
@@ -473,5 +524,14 @@ onMounted(async () => {
 .structure-table :deep(.cell) {
   padding: 0 8px;
   line-height: 1.5;
+}
+
+.dimension-name {
+  font-weight: 600;
+}
+
+.ratio-text {
+  font-size: 13px;
+  margin-left: 4px;
 }
 </style>

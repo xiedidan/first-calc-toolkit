@@ -4,10 +4,16 @@
       <template #header>
         <div class="card-header">
           <span>评估模型管理</span>
-          <el-button type="primary" @click="handleAdd">
-            <el-icon><Plus /></el-icon>
-            新建版本
-          </el-button>
+          <div class="header-buttons">
+            <el-button type="success" @click="handleImport">
+              <el-icon><Download /></el-icon>
+              导入版本
+            </el-button>
+            <el-button type="primary" @click="handleAdd">
+              <el-icon><Plus /></el-icon>
+              新建版本
+            </el-button>
+          </div>
         </div>
       </template>
 
@@ -166,13 +172,19 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 导入版本对话框 -->
+    <ModelVersionImportDialog
+      v-model:visible="importDialogVisible"
+      @success="handleImportSuccess"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { Plus, Edit, Check, CopyDocument, Document, Search } from '@element-plus/icons-vue'
+import { Plus, Edit, Check, CopyDocument, Document, Search, Download } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import {
   getModelVersions,
@@ -182,6 +194,7 @@ import {
   activateModelVersion,
   type ModelVersion
 } from '@/api/model'
+import ModelVersionImportDialog from '@/components/ModelVersionImportDialog.vue'
 
 const router = useRouter()
 
@@ -227,6 +240,9 @@ const copyRules: FormRules = {
   version: [{ required: true, message: '请输入版本号', trigger: 'blur' }],
   name: [{ required: true, message: '请输入版本名称', trigger: 'blur' }]
 }
+
+// 导入对话框
+const importDialogVisible = ref(false)
 
 // 获取列表
 const fetchData = async () => {
@@ -338,6 +354,18 @@ const handleCopy = (row: ModelVersion) => {
   copyDialogVisible.value = true
 }
 
+// 导入
+const handleImport = () => {
+  importDialogVisible.value = true
+}
+
+// 导入成功
+const handleImportSuccess = (versionId: number) => {
+  fetchData()
+  // 可选：跳转到新版本的编辑页面
+  // router.push({ name: 'ModelNodes', params: { versionId } })
+}
+
 // 删除
 const handleDelete = async (row: ModelVersion) => {
   try {
@@ -443,6 +471,11 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.header-buttons {
+  display: flex;
+  gap: 10px;
 }
 
 .search-bar {

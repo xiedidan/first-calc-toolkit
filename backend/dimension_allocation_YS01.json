@@ -1,0 +1,794 @@
+{
+  "307": {
+    "node_id": 307,
+    "node_code": "dim-doc-in-tr-1",
+    "node_name": "甲级治疗",
+    "ratio": 8.0,
+    "workload": 20876,
+    "reasoning": "白内障专科住院患者需要甲级治疗，权重较高"
+  },
+  "368": {
+    "node_id": 368,
+    "node_code": "dim-tech-exam-scale",
+    "node_name": "量表检查",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "327": {
+    "node_id": 327,
+    "node_code": "dim-doc-sur-in-acad",
+    "node_name": "学科手术",
+    "ratio": 25.0,
+    "workload": 65239,
+    "reasoning": "白内障手术主要工作，权重最高"
+  },
+  "314": {
+    "node_id": 314,
+    "node_code": "dim-doc-sur-out-acad",
+    "node_name": "学科手术",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "门诊手术，白内障主要在住院进行"
+  },
+  "290": {
+    "node_id": 290,
+    "node_code": "dim-doc-out-tr-1",
+    "node_name": "甲级治疗",
+    "ratio": 5.0,
+    "workload": 13047,
+    "reasoning": "门诊甲级治疗，权重中等"
+  },
+  "359": {
+    "node_id": 359,
+    "node_code": "dim-nur-proc-or-large",
+    "node_name": "大手术护理",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "护理工作量，根据业务约束应为0"
+  },
+  "398": {
+    "node_id": 398,
+    "node_code": "dim-tech-ana-general",
+    "node_name": "全身麻醉",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "294": {
+    "node_id": 294,
+    "node_code": "dim-doc-out-eval-exam",
+    "node_name": "检查化验",
+    "ratio": 3.0,
+    "workload": 7828,
+    "reasoning": "门诊检查化验，权重较低"
+  },
+  "298": {
+    "node_id": 298,
+    "node_code": "dim-doc-in-diag-norm",
+    "node_name": "普通诊察",
+    "ratio": 8.0,
+    "workload": 20876,
+    "reasoning": "住院普通诊察，权重中等"
+  },
+  "285": {
+    "node_id": 285,
+    "node_code": "dim-doc-out-diag-norm",
+    "node_name": "普通诊察",
+    "ratio": 12.0,
+    "workload": 31314,
+    "reasoning": "门诊普通诊察，主要工作之一"
+  },
+  "356": {
+    "node_id": 356,
+    "node_code": "dim-nur-proc-out-obsv",
+    "node_name": "留观护理",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "护理工作量，根据业务约束应为0"
+  },
+  "391": {
+    "node_id": 391,
+    "node_code": "dim-tech-lab-immu",
+    "node_name": "临床免疫学检验",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "342": {
+    "node_id": 342,
+    "node_code": "dim-nur-ward-bed-1",
+    "node_name": "重症监护",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "护理工作量，根据业务约束应为0"
+  },
+  "303": {
+    "node_id": 303,
+    "node_code": "dim-doc-in-eval-exam",
+    "node_name": "检查化验",
+    "ratio": 2.0,
+    "workload": 5219,
+    "reasoning": "住院检查化验，权重较低"
+  },
+  "295": {
+    "node_id": 295,
+    "node_code": "dim-doc-out-eval-drug",
+    "node_name": "中草药",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "白内障专科较少使用中草药"
+  },
+  "283": {
+    "node_id": 283,
+    "node_code": "dim-doc-out-diag-consult",
+    "node_name": "会诊",
+    "ratio": 2.0,
+    "workload": 5219,
+    "reasoning": "门诊会诊，权重较低"
+  },
+  "287": {
+    "node_id": 287,
+    "node_code": "dim-doc-out-tr-2",
+    "node_name": "乙级治疗",
+    "ratio": 3.0,
+    "workload": 7828,
+    "reasoning": "门诊乙级治疗，权重较低"
+  },
+  "299": {
+    "node_id": 299,
+    "node_code": "dim-doc-in-diag-consult",
+    "node_name": "会诊",
+    "ratio": 2.0,
+    "workload": 5219,
+    "reasoning": "住院会诊，权重较低"
+  },
+  "301": {
+    "node_id": 301,
+    "node_code": "dim-doc-in-case",
+    "node_name": "病例价值",
+    "ratio": 5.0,
+    "workload": 13047,
+    "reasoning": "病例管理，重要工作内容"
+  },
+  "304": {
+    "node_id": 304,
+    "node_code": "dim-doc-in-eval-drug",
+    "node_name": "中草药",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "白内障专科较少使用中草药"
+  },
+  "308": {
+    "node_id": 308,
+    "node_code": "dim-doc-in-tr-2",
+    "node_name": "乙级治疗",
+    "ratio": 4.0,
+    "workload": 10438,
+    "reasoning": "住院乙级治疗，权重中等"
+  },
+  "325": {
+    "node_id": 325,
+    "node_code": "dim-doc-sur-out-4a",
+    "node_name": "甲级手术A",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "门诊手术，白内障主要在住院进行"
+  },
+  "328": {
+    "node_id": 328,
+    "node_code": "dim-doc-sur-in-4a",
+    "node_name": "甲级手术A",
+    "ratio": 8.0,
+    "workload": 20876,
+    "reasoning": "住院甲级手术，主要工作"
+  },
+  "344": {
+    "node_id": 344,
+    "node_code": "dim-nur-ward-bed-2",
+    "node_name": "特级护理",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "护理工作量，根据业务约束应为0"
+  },
+  "349": {
+    "node_id": 349,
+    "node_code": "dim-nur-ward-collab",
+    "node_name": "协同护理",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "护理工作量，根据业务约束应为0"
+  },
+  "358": {
+    "node_id": 358,
+    "node_code": "dim-nur-proc-or-mid",
+    "node_name": "中手术护理",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "护理工作量，根据业务约束应为0"
+  },
+  "369": {
+    "node_id": 369,
+    "node_code": "dim-tech-exam-ophth",
+    "node_name": "眼科检查",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "399": {
+    "node_id": 399,
+    "node_code": "dim-tech-ana-niga",
+    "node_name": "无插管全麻",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "365": {
+    "node_id": 365,
+    "node_code": "dim-nur-proc-collab",
+    "node_name": "协同护理",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "护理工作量，根据业务约束应为0"
+  },
+  "393": {
+    "node_id": 393,
+    "node_code": "dim-tech-lab-blood",
+    "node_name": "临床血液学检验",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "345": {
+    "node_id": 345,
+    "node_code": "dim-nur-ward-bed-3",
+    "node_name": "甲级床日护理",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "护理工作量，根据业务约束应为0"
+  },
+  "300": {
+    "node_id": 300,
+    "node_code": "dim-doc-in-diag-mdt",
+    "node_name": "MDT",
+    "ratio": 1.0,
+    "workload": 2609,
+    "reasoning": "多学科会诊，权重较低"
+  },
+  "360": {
+    "node_id": 360,
+    "node_code": "dim-nur-proc-or-tiny",
+    "node_name": "小手术护理",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "护理工作量，根据业务约束应为0"
+  },
+  "309": {
+    "node_id": 309,
+    "node_code": "dim-doc-in-tr-3",
+    "node_name": "丙级治疗",
+    "ratio": 2.0,
+    "workload": 5219,
+    "reasoning": "住院丙级治疗，权重较低"
+  },
+  "350": {
+    "node_id": 350,
+    "node_code": "dim-nur-ward-ind",
+    "node_name": "独立护理",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "护理工作量，根据业务约束应为0"
+  },
+  "324": {
+    "node_id": 324,
+    "node_code": "dim-doc-sur-out-4b",
+    "node_name": "甲级手术B",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "门诊手术，白内障主要在住院进行"
+  },
+  "284": {
+    "node_id": 284,
+    "node_code": "dim-doc-out-diag-mdt",
+    "node_name": "MDT",
+    "ratio": 1.0,
+    "workload": 2609,
+    "reasoning": "门诊多学科会诊，权重较低"
+  },
+  "400": {
+    "node_id": 400,
+    "node_code": "dim-tech-ana-regional",
+    "node_name": "部位麻醉",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "289": {
+    "node_id": 289,
+    "node_code": "dim-doc-out-tr-3",
+    "node_name": "丙级治疗",
+    "ratio": 1.0,
+    "workload": 2609,
+    "reasoning": "门诊丙级治疗，权重较低"
+  },
+  "371": {
+    "node_id": 371,
+    "node_code": "dim-tech-exam-ent",
+    "node_name": "耳鼻喉检查",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "293": {
+    "node_id": 293,
+    "node_code": "dim-doc-out-eval-tr",
+    "node_name": "治疗手术",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "门诊治疗手术，白内障主要在住院进行"
+  },
+  "329": {
+    "node_id": 329,
+    "node_code": "dim-doc-sur-in-4b",
+    "node_name": "甲级手术B",
+    "ratio": 7.0,
+    "workload": 18266,
+    "reasoning": "住院甲级手术，主要工作"
+  },
+  "305": {
+    "node_id": 305,
+    "node_code": "dim-doc-in-eval-tr",
+    "node_name": "治疗手术",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "住院治疗手术，已包含在手术维度"
+  },
+  "364": {
+    "node_id": 364,
+    "node_code": "dim-nur-proc-ind",
+    "node_name": "独立护理",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "护理工作量，根据业务约束应为0"
+  },
+  "288": {
+    "node_id": 288,
+    "node_code": "dim-doc-out-tr-rt",
+    "node_name": "放疗",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "白内障专科不涉及放疗"
+  },
+  "401": {
+    "node_id": 401,
+    "node_code": "dim-tech-ana-mon",
+    "node_name": "麻醉中监测",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "330": {
+    "node_id": 330,
+    "node_code": "dim-doc-sur-in-4c",
+    "node_name": "甲级手术C",
+    "ratio": 6.0,
+    "workload": 15657,
+    "reasoning": "住院甲级手术，主要工作"
+  },
+  "321": {
+    "node_id": 321,
+    "node_code": "dim-doc-sur-out-4c",
+    "node_name": "甲级手术C",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "门诊手术，白内障主要在住院进行"
+  },
+  "310": {
+    "node_id": 310,
+    "node_code": "dim-doc-in-tr-rt",
+    "node_name": "放疗",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "白内障专科不涉及放疗"
+  },
+  "343": {
+    "node_id": 343,
+    "node_code": "dim-nur-ward-bed-4",
+    "node_name": "乙级床日护理",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "护理工作量，根据业务约束应为0"
+  },
+  "394": {
+    "node_id": 394,
+    "node_code": "dim-tech-lab-chem",
+    "node_name": "临床化学检验",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "351": {
+    "node_id": 351,
+    "node_code": "dim-nur-ward-extra",
+    "node_name": "拓展护理",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "护理工作量，根据业务约束应为0"
+  },
+  "379": {
+    "node_id": 379,
+    "node_code": "dim-tech-exam-dent",
+    "node_name": "口腔检查",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "352": {
+    "node_id": 352,
+    "node_code": "dim-nur-ward-op",
+    "node_name": "术中护理",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "护理工作量，根据业务约束应为0"
+  },
+  "402": {
+    "node_id": 402,
+    "node_code": "dim-tech-ana-postop",
+    "node_name": "术后镇痛",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "346": {
+    "node_id": 346,
+    "node_code": "dim-nur-ward-bed-5",
+    "node_name": "丙级床日护理",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "护理工作量，根据业务约束应为0"
+  },
+  "311": {
+    "node_id": 311,
+    "node_code": "dim-doc-in-tr-other",
+    "node_name": "其他治疗",
+    "ratio": 1.0,
+    "workload": 2609,
+    "reasoning": "住院其他治疗，权重较低"
+  },
+  "322": {
+    "node_id": 322,
+    "node_code": "dim-doc-sur-out-4d",
+    "node_name": "甲级手术D",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "门诊手术，白内障主要在住院进行"
+  },
+  "291": {
+    "node_id": 291,
+    "node_code": "dim-doc-out-tr-other",
+    "node_name": "其他治疗",
+    "ratio": 1.0,
+    "workload": 2609,
+    "reasoning": "门诊其他治疗，权重较低"
+  },
+  "331": {
+    "node_id": 331,
+    "node_code": "dim-doc-sur-in-4d",
+    "node_name": "甲级手术D",
+    "ratio": 5.0,
+    "workload": 13047,
+    "reasoning": "住院甲级手术，主要工作"
+  },
+  "370": {
+    "node_id": 370,
+    "node_code": "dim-tech-exam-resp",
+    "node_name": "呼吸检查",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "395": {
+    "node_id": 395,
+    "node_code": "dim-tech-lab-fluid",
+    "node_name": "临床体液检验",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "363": {
+    "node_id": 363,
+    "node_code": "dim-nur-proc-extra",
+    "node_name": "拓展护理",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "护理工作量，根据业务约束应为0"
+  },
+  "353": {
+    "node_id": 353,
+    "node_code": "dim-nur-ward-other",
+    "node_name": "其他护理",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "护理工作量，根据业务约束应为0"
+  },
+  "332": {
+    "node_id": 332,
+    "node_code": "dim-doc-sur-in-3",
+    "node_name": "乙级手术",
+    "ratio": 3.0,
+    "workload": 7828,
+    "reasoning": "住院乙级手术，权重中等"
+  },
+  "396": {
+    "node_id": 396,
+    "node_code": "dim-tech-lab-other",
+    "node_name": "其他化验",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "347": {
+    "node_id": 347,
+    "node_code": "dim-nur-ward-bed-6",
+    "node_name": "特殊疾病护理",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "护理工作量，根据业务约束应为0"
+  },
+  "403": {
+    "node_id": 403,
+    "node_code": "dim-tech-ana-other",
+    "node_name": "其他麻醉",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "362": {
+    "node_id": 362,
+    "node_code": "dim-nur-proc-op",
+    "node_name": "术中护理",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "护理工作量，根据业务约束应为0"
+  },
+  "373": {
+    "node_id": 373,
+    "node_code": "dim-tech-exam-eeg",
+    "node_name": "脑电检查",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "318": {
+    "node_id": 318,
+    "node_code": "dim-doc-sur-out-3",
+    "node_name": "乙级手术",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "门诊手术，白内障主要在住院进行"
+  },
+  "374": {
+    "node_id": 374,
+    "node_code": "dim-tech-exam-ecg",
+    "node_name": "心电检查",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "361": {
+    "node_id": 361,
+    "node_code": "dim-nur-proc-other",
+    "node_name": "其他护理",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "护理工作量，根据业务约束应为0"
+  },
+  "333": {
+    "node_id": 333,
+    "node_code": "dim-doc-sur-in-2",
+    "node_name": "丙级手术",
+    "ratio": 2.0,
+    "workload": 5219,
+    "reasoning": "住院丙级手术，权重较低"
+  },
+  "315": {
+    "node_id": 315,
+    "node_code": "dim-doc-sur-out-2",
+    "node_name": "丙级手术",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "门诊手术，白内障主要在住院进行"
+  },
+  "348": {
+    "node_id": 348,
+    "node_code": "dim-nur-ward-bed-7",
+    "node_name": "新生儿护理",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "护理工作量，根据业务约束应为0"
+  },
+  "323": {
+    "node_id": 323,
+    "node_code": "dim-doc-sur-out-1",
+    "node_name": "丁级手术",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "门诊手术，白内障主要在住院进行"
+  },
+  "334": {
+    "node_id": 334,
+    "node_code": "dim-doc-sur-in-1",
+    "node_name": "丁级手术",
+    "ratio": 1.0,
+    "workload": 2609,
+    "reasoning": "住院丁级手术，权重较低"
+  },
+  "375": {
+    "node_id": 375,
+    "node_code": "dim-tech-exam-emg",
+    "node_name": "肌电检查",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "317": {
+    "node_id": 317,
+    "node_code": "dim-doc-sur-out-interv",
+    "node_name": "类手术介入操作",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "门诊介入操作，白内障主要在住院进行"
+  },
+  "376": {
+    "node_id": 376,
+    "node_code": "dim-tech-exam-us",
+    "node_name": "超声检查",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "335": {
+    "node_id": 335,
+    "node_code": "dim-doc-sur-in-interv",
+    "node_name": "类手术介入操作",
+    "ratio": 2.0,
+    "workload": 5219,
+    "reasoning": "住院介入操作，权重较低"
+  },
+  "377": {
+    "node_id": 377,
+    "node_code": "dim-tech-exam-endo",
+    "node_name": "内窥镜检查",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "316": {
+    "node_id": 316,
+    "node_code": "dim-doc-sur-out-tr",
+    "node_name": "术类手术",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "门诊术类手术，白内障主要在住院进行"
+  },
+  "336": {
+    "node_id": 336,
+    "node_code": "dim-doc-sur-in-tr",
+    "node_name": "术类手术",
+    "ratio": 1.0,
+    "workload": 2609,
+    "reasoning": "住院术类手术，权重较低"
+  },
+  "319": {
+    "node_id": 319,
+    "node_code": "dim-doc-sur-out-extra",
+    "node_name": "术中加收",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "门诊术中加收，白内障主要在住院进行"
+  },
+  "337": {
+    "node_id": 337,
+    "node_code": "dim-doc-sur-in-extra",
+    "node_name": "术中加收",
+    "ratio": 1.0,
+    "workload": 2609,
+    "reasoning": "住院术中加收，权重较低"
+  },
+  "378": {
+    "node_id": 378,
+    "node_code": "dim-tech-exam-mri",
+    "node_name": "MRI检查",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "372": {
+    "node_id": 372,
+    "node_code": "dim-tech-exam-ct",
+    "node_name": "CT检查",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "338": {
+    "node_id": 338,
+    "node_code": "dim-doc-sur-in-other",
+    "node_name": "其他手术",
+    "ratio": 1.0,
+    "workload": 2609,
+    "reasoning": "住院其他手术，权重较低"
+  },
+  "320": {
+    "node_id": 320,
+    "node_code": "dim-doc-sur-out-other",
+    "node_name": "其他手术",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "门诊其他手术，白内障主要在住院进行"
+  },
+  "380": {
+    "node_id": 380,
+    "node_code": "dim-tech-exam-xray",
+    "node_name": "X线检查",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "385": {
+    "node_id": 385,
+    "node_code": "dim-tech-exam-nuc",
+    "node_name": "核医学检查",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "381": {
+    "node_id": 381,
+    "node_code": "dim-tech-exam-pet",
+    "node_name": "PET检查",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "386": {
+    "node_id": 386,
+    "node_code": "dim-tech-exam-dsa",
+    "node_name": "DSA检查",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "387": {
+    "node_id": 387,
+    "node_code": "dim-tech-exam-cell",
+    "node_name": "细胞病理学检查与诊断",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "383": {
+    "node_id": 383,
+    "node_code": "dim-tech-exam-tissue",
+    "node_name": "组织病理学检查与诊断",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "384": {
+    "node_id": 384,
+    "node_code": "dim-tech-exam-mol",
+    "node_name": "临床分子生物学检验",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  },
+  "389": {
+    "node_id": 389,
+    "node_code": "dim-tech-exam-other",
+    "node_name": "其他检查",
+    "ratio": 0.0,
+    "workload": 0,
+    "reasoning": "医技项目，根据业务约束应为0"
+  }
+}

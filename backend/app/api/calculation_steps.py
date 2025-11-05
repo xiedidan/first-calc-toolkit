@@ -22,8 +22,36 @@ from app.schemas.calculation_step import (
     TestCodeResponse,
 )
 from app.services.data_source_service import DataSourceService
+from app.utils.hospital_filter import validate_hospital_access
 
 router = APIRouter()
+
+
+def _get_step_with_hospital_check(db: Session, step_id: int) -> CalculationStep:
+    """
+    获取步骤并验证所属医疗机构
+    
+    Args:
+        db: 数据库会话
+        step_id: 步骤ID
+        
+    Returns:
+        步骤对象
+        
+    Raises:
+        HTTPException: 如果步骤不存在或不属于当前医疗机构
+    """
+    step = db.query(CalculationStep).filter(CalculationStep.id == step_id).first()
+    if not step:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="计算步骤不存在"
+        )
+    
+    # 验证步骤所属的流程版本是否属于当前医疗机构
+    validate_hospital_access(db, step.workflow.version)
+    
+    return step
 
 
 @router.get("", response_model=CalculationStepListResponse)
@@ -40,6 +68,9 @@ def get_calculation_steps(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="计算流程不存在"
         )
+    
+    # 验证流程所属的版本是否属于当前医疗机构
+    validate_hospital_access(db, workflow.version)
     
     # 查询步骤
     items = db.query(CalculationStep).filter(
@@ -69,6 +100,9 @@ def create_calculation_step(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="计算流程不存在"
         )
+    
+    # 验证流程所属的版本是否属于当前医疗机构
+    validate_hospital_access(db, workflow.version)
     
     # 验证代码类型
     if step_in.code_type not in ['python', 'sql']:
@@ -119,12 +153,7 @@ def get_calculation_step(
     current_user: User = Depends(get_current_user),
 ):
     """获取计算步骤详情"""
-    step = db.query(CalculationStep).filter(CalculationStep.id == step_id).first()
-    if not step:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="计算步骤不存在"
-        )
+    step = _get_step_with_hospital_check(db, step_id)
     
     # 加载关联数据
     if step.workflow:
@@ -143,12 +172,7 @@ def update_calculation_step(
     current_user: User = Depends(get_current_user),
 ):
     """更新计算步骤"""
-    step = db.query(CalculationStep).filter(CalculationStep.id == step_id).first()
-    if not step:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="计算步骤不存在"
-        )
+    step = _get_step_with_hospital_check(db, step_id)
     
     # 验证代码类型
     if step_in.code_type and step_in.code_type not in ['python', 'sql']:
@@ -191,12 +215,7 @@ def delete_calculation_step(
     current_user: User = Depends(get_current_user),
 ):
     """删除计算步骤"""
-    step = db.query(CalculationStep).filter(CalculationStep.id == step_id).first()
-    if not step:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="计算步骤不存在"
-        )
+    step = _get_step_with_hospital_check(db, step_id)
     
     # 删除步骤
     db.delete(step)
@@ -210,12 +229,7 @@ def move_step_up(
     current_user: User = Depends(get_current_user),
 ):
     """上移计算步骤"""
-    step = db.query(CalculationStep).filter(CalculationStep.id == step_id).first()
-    if not step:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="计算步骤不存在"
-        )
+    step = _get_step_with_hospital_check(db, step_id)
     
     # 查找上一个步骤
     prev_step = db.query(CalculationStep).filter(
@@ -241,12 +255,7 @@ def move_step_down(
     current_user: User = Depends(get_current_user),
 ):
     """下移计算步骤"""
-    step = db.query(CalculationStep).filter(CalculationStep.id == step_id).first()
-    if not step:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="计算步骤不存在"
-        )
+    step = _get_step_with_hospital_check(db, step_id)
     
     # 查找下一个步骤
     next_step = db.query(CalculationStep).filter(
@@ -273,12 +282,7 @@ def test_step_code(
     current_user: User = Depends(get_current_user),
 ):
     """测试计算步骤代码"""
-    step = db.query(CalculationStep).filter(CalculationStep.id == step_id).first()
-    if not step:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="计算步骤不存在"
-        )
+    step = _get_step_with_hospital_check(db, step_id)
     
     start_time = time.time()
     

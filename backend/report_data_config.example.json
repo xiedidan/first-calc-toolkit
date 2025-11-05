@@ -1,0 +1,162 @@
+{
+  "ai_config": {
+    "api_key": "${OPENAI_API_KEY}",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-3.5-turbo",
+    "temperature": 0.7,
+    "max_tokens": 4000,
+    "timeout": 60,
+    "note": "支持OpenAI兼容API，如DeepSeek、Azure OpenAI等。api_key支持环境变量${VAR_NAME}格式"
+  },
+  
+  "hospital_info": {
+    "name": "宁波市眼科医院",
+    "type": "专科医院",
+    "specialty": "眼科",
+    "description": "三级甲等眼科专科医院，以眼科诊疗为主，设有眼科门诊、眼科病房、眼科手术室等，同时配备检验科、影像科等医技科室提供辅助诊断服务。",
+    "characteristics": [
+      "眼科专科医院，眼科相关科室工作量占主导",
+      "手术主要集中在眼科手术室",
+      "护理工作主要在眼科病区",
+      "医技检查主要为眼科相关检查项目"
+    ]
+  },
+  
+  "total_workload": {
+    "workload_based_total": {
+      "value": 3261973,
+      "description": "所有按工作量权重计提的维度的工作量总额",
+      "note": "主要分布在医生专科、护理病区等维度"
+    },
+    "consultation_total": {
+      "value": 0,
+      "description": "医生总会诊数",
+      "note": "主要在眼科专科，少量在内科、外科等辅助科室"
+    },
+    "mdt_total": {
+      "value": 0,
+      "description": "医生总MDT数（多学科会诊）",
+      "note": "主要涉及复杂眼科病例的跨科室会诊"
+    },
+    "case_total": {
+      "value": 0,
+      "description": "医生总病案数",
+      "note": "主要在眼科病区，包括白内障、青光眼、眼底病等"
+    },
+    "nursing_bed_days_total": {
+      "value": 15000,
+      "description": "护理总床日数",
+      "note": "主要在眼科病区护理科室"
+    },
+    "surgery_total": {
+      "value": 2000,
+      "description": "手术总台次数",
+      "note": "主要在眼科手术室，眼科专科手术为主"
+    },
+    "observation_total": {
+      "value": 0,
+      "description": "留观数",
+      "note": "主要在急诊留观室和眼科门诊留观"
+    }
+  },
+  
+  "departments": [
+    {
+      "his_code": "01",
+      "his_name": "白内障科",
+      "category": "医生专科",
+      "business_characteristics": "眼科专科，主要进行白内障手术治疗，工作量集中在门诊诊察、住院治疗、手术操作等医生维度",
+      "constraints": [
+        "护理工作量应该很少或为0（护理在护理科室）",
+        "手术台次应该为0（手术在手术室科室）",
+        "医技项目应该为0（医技在医技科室）",
+        "主要工作量在：门诊诊察、住院床日、医生治疗手术等维度"
+      ]
+    },
+    {
+      "his_code": "02",
+      "his_name": "青光眼科",
+      "category": "医生专科",
+      "business_characteristics": "眼科专科，主要诊治青光眼患者，包括门诊、住院、手术等",
+      "constraints": [
+        "护理工作量应该很少或为0",
+        "手术台次应该为0",
+        "医技项目应该为0",
+        "主要工作量在医生手术相关维度"
+      ]
+    },
+    {
+      "his_code": "03",
+      "his_name": "眼底病科",
+      "category": "医生专科",
+      "business_characteristics": "眼科专科，主要诊治眼底疾病，包括糖尿病视网膜病变、黄斑病变等",
+      "constraints": [
+        "护理工作量应该很少或为0",
+        "手术台次应该为0",
+        "医技项目应该为0",
+        "主要工作量在医生治疗相关维度"
+      ]
+    },
+    {
+      "his_code": "11",
+      "his_name": "眼科病区护理",
+      "category": "护理病区",
+      "business_characteristics": "护理科室，负责眼科病区的护理工作，包括床日护理、护理操作等",
+      "constraints": [
+        "医生诊疗工作量应该为0（医生在医生专科）",
+        "手术台次应该为0（手术在手术室）",
+        "医技项目应该为0",
+        "主要工作量在：床日护理、护理操作等护理维度"
+      ]
+    },
+    {
+      "his_code": "12",
+      "his_name": "眼科手术室",
+      "category": "护理非病区",
+      "business_characteristics": "手术室护理科室，负责眼科手术的护理配合工作",
+      "constraints": [
+        "医生诊疗工作量应该为0",
+        "床日护理应该为0（床日在病区护理）",
+        "医技项目应该为0",
+        "主要工作量在：手术室护理维度"
+      ]
+    },
+    {
+      "his_code": "21",
+      "his_name": "检验科",
+      "category": "医技科室",
+      "business_characteristics": "医技科室，提供各类检验服务，包括血液检验、生化检验等",
+      "constraints": [
+        "医生诊疗工作量应该为0",
+        "护理工作量应该为0",
+        "手术台次应该为0",
+        "主要工作量在：检验项目等医技维度"
+      ]
+    },
+    {
+      "his_code": "22",
+      "his_name": "影像科",
+      "category": "医技科室",
+      "business_characteristics": "医技科室，提供影像检查服务，包括CT、MRI、超声等",
+      "constraints": [
+        "医生诊疗工作量应该为0",
+        "护理工作量应该为0",
+        "手术台次应该为0",
+        "主要工作量在：影像检查等医技维度"
+      ]
+    },
+    {
+      "his_code": "31",
+      "his_name": "药剂科",
+      "category": "行政后勤",
+      "business_characteristics": "药剂科室，负责药品管理和发放",
+      "constraints": [
+        "医生诊疗工作量应该为0",
+        "护理工作量应该为0",
+        "手术台次应该为0",
+        "医技项目应该为0",
+        "主要工作量在：药品调剂等维度"
+      ]
+    }
+  ]
+}

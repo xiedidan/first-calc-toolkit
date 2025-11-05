@@ -25,6 +25,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 配置医疗机构上下文中间件
+from app.middleware import HospitalContextMiddleware
+app.add_middleware(HospitalContextMiddleware)
+
 
 @app.get("/")
 async def root():
@@ -48,11 +52,12 @@ async def health_check():
 
 
 # 导入路由
-from app.api import auth, users, departments, dimension_items, charge_items, model_versions, model_nodes, calculation_workflows, calculation_steps, data_sources, system_settings, calculation_tasks
+from app.api import auth, users, departments, dimension_items, charge_items, model_versions, model_nodes, calculation_workflows, calculation_steps, data_sources, system_settings, calculation_tasks, hospitals
 
 # 注册路由
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["用户管理"])
+app.include_router(hospitals.router, prefix="/api/v1/hospitals", tags=["医疗机构管理"])
 app.include_router(charge_items.router, prefix="/api/v1/charge-items", tags=["收费项目管理"])
 app.include_router(departments.router, prefix="/api/v1/departments", tags=["科室管理"])
 app.include_router(dimension_items.router, prefix="/api/v1/dimension-items", tags=["维度目录管理"])

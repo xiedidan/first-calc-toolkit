@@ -2,10 +2,41 @@
   <el-container class="layout-container">
     <el-header class="layout-header">
       <div class="header-left">
-        <h3>医院科室业务价值评估工具</h3>
+        <h3>{{ pageTitle }}</h3>
       </div>
       <div class="header-right">
-        <el-dropdown @command="handleCommand">
+        <!-- Hospital Selector -->
+        <el-dropdown
+          v-if="hospitalStore.accessibleHospitals.length > 0"
+          @command="handleHospitalSwitch"
+          class="hospital-selector"
+        >
+          <span class="hospital-info">
+            <el-icon><OfficeBuilding /></el-icon>
+            <span>{{ hospitalStore.currentHospitalName || '请选择医疗机构' }}</span>
+            <el-icon><ArrowDown /></el-icon>
+          </span>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item
+                v-for="hospital in hospitalStore.accessibleHospitals"
+                :key="hospital.id"
+                :command="hospital.id"
+                :disabled="hospital.id === hospitalStore.currentHospitalId"
+              >
+                <div class="hospital-item">
+                  <span>{{ hospital.name }}</span>
+                  <el-icon v-if="hospital.id === hospitalStore.currentHospitalId" color="#67C23A">
+                    <Check />
+                  </el-icon>
+                </div>
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+
+        <!-- User Dropdown -->
+        <el-dropdown @command="handleUserCommand">
           <span class="user-info">
             <el-icon><User /></el-icon>
             <span>{{ userStore.userInfo?.name }}</span>
@@ -33,12 +64,15 @@
       <el-aside width="220px" class="layout-aside">
         <el-menu
           :default-active="activeMenu"
-          :default-openeds="['model', 'base-data']"
+          :default-openeds="['model', 'base-data', 'system']"
           router
           class="layout-menu"
         >
           <!-- 首页 -->
-          <el-menu-item index="/dashboard">
+          <el-menu-item 
+            index="/dashboard"
+            :disabled="!isMenuItemEnabled('/dashboard')"
+          >
             <el-icon><HomeFilled /></el-icon>
             <span>首页</span>
           </el-menu-item>
@@ -62,7 +96,10 @@
           </el-menu-item>
 
           <!-- 评估模型管理 -->
-          <el-sub-menu index="model">
+          <el-sub-menu 
+            index="model"
+            :disabled="!isMenuItemEnabled('/model-versions')"
+          >
             <template #title>
               <el-icon><Document /></el-icon>
               <span>评估模型管理</span>
@@ -73,13 +110,19 @@
           </el-sub-menu>
 
           <!-- 计算任务管理 -->
-          <el-menu-item index="/calculation-tasks">
+          <el-menu-item 
+            index="/calculation-tasks"
+            :disabled="!isMenuItemEnabled('/calculation-tasks')"
+          >
             <el-icon><Clock /></el-icon>
             <span>计算任务管理</span>
           </el-menu-item>
 
           <!-- 报表查询展示 -->
-          <el-menu-item index="/results">
+          <el-menu-item 
+            index="/results"
+            :disabled="!isMenuItemEnabled('/results')"
+          >
             <el-icon><DataAnalysis /></el-icon>
             <span>业务价值报表</span>
           </el-menu-item>
@@ -103,7 +146,10 @@
           </el-menu-item>
 
           <!-- 基础数据管理 -->
-          <el-sub-menu index="base-data">
+          <el-sub-menu 
+            index="base-data"
+            :disabled="!isMenuItemEnabled('/departments')"
+          >
             <template #title>
               <el-icon><FolderOpened /></el-icon>
               <span>基础数据管理</span>
@@ -116,6 +162,15 @@
           <el-menu-item index="/data-sources">
             <el-icon><Connection /></el-icon>
             <span>数据源管理</span>
+          </el-menu-item>
+
+          <!-- 医疗机构管理 -->
+          <el-menu-item 
+            v-if="isAdmin"
+            index="/hospitals"
+          >
+            <el-icon><OfficeBuilding /></el-icon>
+            <span>医疗机构管理</span>
           </el-menu-item>
 
           <!-- 系统设置 -->
@@ -138,9 +193,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   User, 
   ArrowDown, 
@@ -157,13 +212,35 @@ import {
   TrendCharts,
   FolderOpened, 
   Connection,
-  Setting 
+  Setting,
+  OfficeBuilding,
+  Check
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
+import { useHospitalStore } from '@/stores/hospital'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+const hospitalStore = useHospitalStore()
+
+// Page title based on current hospital
+const pageTitle = computed(() => {
+  if (hospitalStore.currentHospitalName) {
+    return `${hospitalStore.currentHospitalName}科室业务价值评估工具`
+  }
+  return '医院科室业务价值评估工具'
+})
+
+// Check if user is admin
+const isAdmin = computed(() => {
+  return userStore.hasRole('admin') || userStore.hasRole('系统管理员')
+})
+
+// Check if menu item should be enabled
+const isMenuItemEnabled = (menuPath: string) => {
+  return hospitalStore.isMenuEnabled(menuPath)
+}
 
 const activeMenu = computed(() => {
   const path = route.path
@@ -186,10 +263,24 @@ const activeMenu = computed(() => {
   if (path.startsWith('/data-sources')) {
     return '/data-sources'
   }
+  if (path.startsWith('/hospitals')) {
+    return '/hospitals'
+  }
   return path
 })
 
-const handleCommand = (command: string) => {
+const handleHospitalSwitch = async (hospitalId: number) => {
+  try {
+    await hospitalStore.activate(hospitalId)
+    ElMessage.success('切换医疗机构成功')
+    // Reload current page data
+    router.go(0)
+  } catch (error) {
+    ElMessage.error('切换医疗机构失败')
+  }
+}
+
+const handleUserCommand = (command: string) => {
   if (command === 'logout') {
     ElMessageBox.confirm('确定要退出登录吗？', '提示', {
       confirmButtonText: '确定',
@@ -197,10 +288,20 @@ const handleCommand = (command: string) => {
       type: 'warning'
     }).then(() => {
       userStore.logout()
+      hospitalStore.clearCurrentHospital()
       router.push('/login')
     })
   }
 }
+
+// Load accessible hospitals on mount
+onMounted(async () => {
+  try {
+    await hospitalStore.fetchAccessibleHospitals()
+  } catch (error) {
+    console.error('Failed to load accessible hospitals:', error)
+  }
+})
 </script>
 
 <style scoped>
@@ -230,6 +331,34 @@ const handleCommand = (command: string) => {
 .header-right {
   display: flex;
   align-items: center;
+  gap: 16px;
+}
+
+.hospital-selector {
+  margin-right: 8px;
+}
+
+.hospital-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 4px;
+  transition: background 0.3s;
+  color: #409eff;
+  font-weight: 500;
+}
+
+.hospital-info:hover {
+  background: #ecf5ff;
+}
+
+.hospital-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 200px;
 }
 
 .user-info {
@@ -291,6 +420,16 @@ const handleCommand = (command: string) => {
 
 .layout-menu :deep(.el-sub-menu__title:hover) {
   background-color: #ecf5ff;
+}
+
+/* 二级菜单缩进 */
+.layout-menu :deep(.el-menu-item) {
+  padding-left: 20px !important;
+}
+
+.layout-menu :deep(.el-sub-menu .el-menu-item) {
+  padding-left: 50px !important;
+  min-width: 200px;
 }
 
 /* 禁用状态样式 */

@@ -27,6 +27,7 @@ def import_charge_items_task(
     self,
     file_content: bytes,
     mapping: dict,
+    hospital_id: int,
     db: Session = None
 ):
     """
@@ -35,6 +36,7 @@ def import_charge_items_task(
     Args:
         file_content: Excel 文件内容（bytes）
         mapping: 字段映射关系
+        hospital_id: 医疗机构ID
         db: 数据库会话（由 ImportTask 自动注入）
     """
     # 更新任务状态
@@ -51,11 +53,17 @@ def import_charge_items_task(
         item_code = row_data.get("item_code", "")
         if item_code:
             existing = db.query(ChargeItem).filter(
+                ChargeItem.hospital_id == hospital_id,
                 ChargeItem.item_code == item_code
             ).first()
             if existing:
                 return f"项目编码 {item_code} 已存在"
         return None
+    
+    # 数据预处理函数：添加hospital_id
+    def preprocess_row(row_data: dict) -> dict:
+        row_data['hospital_id'] = hospital_id
+        return row_data
     
     # 自定义进度回调
     processed_count = [0]  # 使用列表以便在闭包中修改
@@ -81,7 +89,8 @@ def import_charge_items_task(
             db,
             ChargeItem,
             validate_charge_item,
-            progress_callback
+            progress_callback,
+            preprocess_row
         )
         
         return {

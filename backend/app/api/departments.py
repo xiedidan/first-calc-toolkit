@@ -14,6 +14,12 @@ from app.schemas.department import (
     DepartmentUpdate,
     DepartmentList,
 )
+from app.utils.hospital_filter import (
+    apply_hospital_filter,
+    get_current_hospital_id_or_raise,
+    validate_hospital_access,
+    set_hospital_id_for_create,
+)
 
 router = APIRouter()
 
@@ -31,6 +37,9 @@ def get_departments(
 ):
     """获取科室列表"""
     query = db.query(Department)
+    
+    # 应用医疗机构过滤
+    query = apply_hospital_filter(query, Department, required=True)
     
     # 关键词搜索
     if keyword:
@@ -70,18 +79,26 @@ def create_department(
     current_user = Depends(deps.get_current_user),
 ):
     """创建科室"""
-    # 检查HIS代码是否已存在
-    existing = db.query(Department).filter(
-        Department.his_code == department_in.his_code
-    ).first()
+    # 获取当前医疗机构ID
+    hospital_id = get_current_hospital_id_or_raise()
+    
+    # 检查HIS代码是否已存在（同一医疗机构内）
+    query = db.query(Department).filter(Department.his_code == department_in.his_code)
+    query = apply_hospital_filter(query, Department, required=True)
+    existing = query.first()
     if existing:
         raise HTTPException(status_code=400, detail="HIS科室代码已存在")
     
-    # 如果没有指定排序序号，自动设置为最大序号+1
+    # 如果没有指定排序序号，自动设置为最大序号+1（同一医疗机构内）
     department_data = department_in.model_dump()
     if department_data.get("sort_order") is None:
-        max_order = db.query(func.max(Department.sort_order)).scalar()
+        query = db.query(func.max(Department.sort_order))
+        query = apply_hospital_filter(query.select_from(Department), Department, required=True)
+        max_order = query.scalar()
         department_data["sort_order"] = (max_order or 0) + 1
+    
+    # 自动设置hospital_id
+    department_data = set_hospital_id_for_create(department_data, hospital_id)
     
     # 创建科室
     department = Department(**department_data)
@@ -99,7 +116,9 @@ def get_department(
     current_user = Depends(deps.get_current_user),
 ):
     """获取科室详情"""
-    department = db.query(Department).filter(Department.id == department_id).first()
+    query = db.query(Department).filter(Department.id == department_id)
+    query = apply_hospital_filter(query, Department, required=True)
+    department = query.first()
     if not department:
         raise HTTPException(status_code=404, detail="科室不存在")
     
@@ -114,9 +133,14 @@ def update_department(
     current_user = Depends(deps.get_current_user),
 ):
     """更新科室信息"""
-    department = db.query(Department).filter(Department.id == department_id).first()
+    query = db.query(Department).filter(Department.id == department_id)
+    query = apply_hospital_filter(query, Department, required=True)
+    department = query.first()
     if not department:
         raise HTTPException(status_code=404, detail="科室不存在")
+    
+    # 验证数据所属医疗机构
+    validate_hospital_access(db, department)
     
     # 更新字段
     update_data = department_in.model_dump(exclude_unset=True)
@@ -136,9 +160,14 @@ def delete_department(
     current_user = Depends(deps.get_current_user),
 ):
     """删除科室"""
-    department = db.query(Department).filter(Department.id == department_id).first()
+    query = db.query(Department).filter(Department.id == department_id)
+    query = apply_hospital_filter(query, Department, required=True)
+    department = query.first()
     if not department:
         raise HTTPException(status_code=404, detail="科室不存在")
+    
+    # 验证数据所属医疗机构
+    validate_hospital_access(db, department)
     
     db.delete(department)
     db.commit()
@@ -153,9 +182,14 @@ def toggle_evaluation(
     current_user = Depends(deps.get_current_user),
 ):
     """切换科室评估状态"""
-    department = db.query(Department).filter(Department.id == department_id).first()
+    query = db.query(Department).filter(Department.id == department_id)
+    query = apply_hospital_filter(query, Department, required=True)
+    department = query.first()
     if not department:
         raise HTTPException(status_code=404, detail="科室不存在")
+    
+    # 验证数据所属医疗机构
+    validate_hospital_access(db, department)
     
     department.is_active = not department.is_active
     db.commit()

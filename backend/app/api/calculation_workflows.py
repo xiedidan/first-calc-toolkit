@@ -19,6 +19,10 @@ from app.schemas.calculation_workflow import (
     CalculationWorkflowCopyRequest,
     CalculationWorkflowCopyResponse,
 )
+from app.utils.hospital_filter import (
+    apply_hospital_filter,
+    validate_hospital_access,
+)
 
 router = APIRouter()
 
@@ -33,7 +37,13 @@ def get_calculation_workflows(
     current_user: User = Depends(get_current_user),
 ):
     """获取计算流程列表"""
-    query = db.query(CalculationWorkflow).options(joinedload(CalculationWorkflow.version))
+    # Join ModelVersion以应用医疗机构过滤
+    query = db.query(CalculationWorkflow).join(
+        ModelVersion, CalculationWorkflow.version_id == ModelVersion.id
+    ).options(joinedload(CalculationWorkflow.version))
+    
+    # 应用医疗机构过滤
+    query = apply_hospital_filter(query, ModelVersion, required=True)
     
     # 版本筛选
     if version_id:
@@ -71,13 +81,18 @@ def create_calculation_workflow(
     current_user: User = Depends(get_current_user),
 ):
     """创建计算流程"""
-    # 验证版本是否存在
-    version = db.query(ModelVersion).filter(ModelVersion.id == workflow_in.version_id).first()
+    # 验证版本是否存在且属于当前医疗机构
+    query = db.query(ModelVersion).filter(ModelVersion.id == workflow_in.version_id)
+    query = apply_hospital_filter(query, ModelVersion, required=True)
+    version = query.first()
     if not version:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="模型版本不存在"
         )
+    
+    # 验证版本所属医疗机构
+    validate_hospital_access(db, version)
     
     # 检查同一版本下流程名称是否重复
     existing = db.query(CalculationWorkflow).filter(
@@ -117,6 +132,9 @@ def get_calculation_workflow(
             detail="计算流程不存在"
         )
     
+    # 验证流程所属的版本是否属于当前医疗机构
+    validate_hospital_access(db, workflow.version)
+    
     # 加载关联数据
     if workflow.version:
         workflow.version_name = workflow.version.name
@@ -143,6 +161,9 @@ def update_calculation_workflow(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="计算流程不存在"
         )
+    
+    # 验证流程所属的版本是否属于当前医疗机构
+    validate_hospital_access(db, workflow.version)
     
     # 如果更新名称，检查是否重复
     if workflow_in.name and workflow_in.name != workflow.name:
@@ -189,6 +210,9 @@ def delete_calculation_workflow(
             detail="计算流程不存在"
         )
     
+    # 验证流程所属的版本是否属于当前医疗机构
+    validate_hospital_access(db, workflow.version)
+    
     # 删除流程（会级联删除所有步骤）
     db.delete(workflow)
     db.commit()
@@ -209,6 +233,9 @@ def copy_calculation_workflow(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="计算流程不存在"
         )
+    
+    # 验证流程所属的版本是否属于当前医疗机构
+    validate_hospital_access(db, source_workflow.version)
     
     # 检查新名称是否重复
     existing = db.query(CalculationWorkflow).filter(

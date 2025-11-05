@@ -1,0 +1,16 @@
+{
+  "department_allocation_prompt": {
+    "system": "你是一个医院业务数据分析专家，擅长根据医院特点和科室性质，合理分配各科室的工作量数据。",
+    "user_template": "请根据以下医院信息和科室列表，为每个科室分配合理的工作量比例。\n\n# 医院信息\n医院名称：{hospital_name}\n医院类型：{hospital_type}\n医院特色：{hospital_specialty}\n医院描述：{hospital_description}\n医院特点：\n{hospital_characteristics}\n\n# 总工作量数据\n{total_workload_info}\n\n# 科室列表\n{departments_info}\n\n# 分配要求\n1. 根据医院的业务特点，合理分配各项工作量到各科室\n2. 考虑科室的类别和业务特点\n3. 确保分配符合医疗业务逻辑，例如：\n   - 工作量主要分配给医生专科\n   - 会诊数主要在医生专科，少量在辅助科室\n   - MDT数主要涉及复杂病例的跨科室会诊\n   - 病案数主要在有住院业务的医生专科\n   - 床日数主要在护理病区科室\n   - 手术台次主要在手术室科室\n   - 留观数主要在急诊或门诊留观科室\n   - 医技科室的工作量主要体现在对应的医技项目上\n4. 专科医院要突出专科特色，主要工作量集中在专科相关科室\n5. 所有比例之和必须等于100%\n\n# 输出格式\n请严格按照以下JSON格式输出，不要包含任何其他文字说明：\n```json\n{{\n  \"allocations\": [\n    {{\n      \"his_code\": \"科室代码\",\n      \"his_name\": \"科室名称\",\n      \"workload_based_ratio\": 0.0,\n      \"consultation_ratio\": 0.0,\n      \"mdt_ratio\": 0.0,\n      \"case_ratio\": 0.0,\n      \"nursing_bed_days_ratio\": 0.0,\n      \"surgery_ratio\": 0.0,\n      \"observation_ratio\": 0.0,\n      \"reasoning\": \"分配理由\"\n    }}\n  ]\n}}\n```\n\n注意：\n- 所有ratio字段的值为0-100之间的数字，表示百分比\n- 每个工作量类型的所有科室ratio之和必须等于100\n- reasoning字段简要说明分配理由"
+  },
+  
+  "dimension_allocation_prompt": {
+    "system": "你是一个医院业务数据分析专家，擅长根据科室特点和业务性质，合理分配科室内各维度的工作量比例。",
+    "user_template": "请根据以下科室信息和维度列表，为该科室的各个维度分配合理的工作量比例。\n\n# 科室信息\n科室代码：{dept_code}\n科室名称：{dept_name}\n科室类别：{dept_category}\n业务特点：{dept_characteristics}\n业务约束：\n{dept_constraints}\n\n# 科室总工作量\n{dept_total_workload}\n\n# 维度列表（树形结构）\n{dimensions_info}\n\n# 分配要求\n1. **必须使用上面维度列表中提供的维度代码**，不要自己编造代码\n2. 根据科室的业务特点和约束，合理分配工作量比例到各个维度\n3. 严格遵守科室的业务约束，例如：\n   - 医生专科：主要工作量在医生相关维度（门诊、住院、治疗手术等），护理、手术台次、医技项目应该为0或很少\n   - 护理病区：主要工作量在护理相关维度（床日护理、护理操作等），医生诊疗、手术台次、医技项目应该为0\n   - 手术室：主要工作量在手术室护理维度，其他维度应该为0\n   - 医技科室：主要工作量在对应的医技维度，医生诊疗、护理、手术应该为0\n4. 对于树形结构的维度，需要合理分配父维度下的子维度比例\n5. 同一父维度下的所有子维度比例之和必须等于100%\n6. **只为叶子维度（没有子维度的维度）分配比例，父维度的比例会自动汇总**\n7. **你只需要返回比例（0-100的百分比），系统会自动计算实际工作量**\n\n# 输出格式\n请严格按照以下JSON格式输出，不要包含任何其他文字说明：\n```json\n{{\n  \"allocations\": [\n    {{\n      \"dimension_code\": \"必须使用上面列表中的维度代码，如dim-doc-out-diag\",\n      \"dimension_name\": \"维度名称\",\n      \"parent_code\": \"父维度代码或null\",\n      \"ratio\": 0.0,\n      \"reasoning\": \"分配理由\"\n    }}\n  ]\n}}\n```\n\n**重要注意事项：**\n- **dimension_code必须严格使用上面维度列表中提供的代码**（如dim-doc-out-diag、dim-nur-ward-bed等），不要自己编造\n- **ratio字段为该维度占科室总工作量的比例（0-100的百分比）**\n- 所有叶子维度的ratio之和应该等于100（允许小幅误差）\n- reasoning字段简要说明分配理由\n- **只为叶子维度（没有子维度的维度）分配比例**"
+  },
+  
+  "validation_prompt": {
+    "system": "你是一个医院业务数据验证专家，擅长检查数据分配的合理性和一致性。",
+    "user_template": "请验证以下数据分配是否合理，并指出可能存在的问题。\n\n# 医院信息\n{hospital_info}\n\n# 科室分配数据\n{department_allocations}\n\n# 维度分配数据\n{dimension_allocations}\n\n# 验证要点\n1. 检查各项工作量的科室分配比例之和是否等于100%\n2. 检查科室内各维度的分配是否符合科室业务特点\n3. 检查是否违反了业务约束（如医生专科不应有手术台次等）\n4. 检查数据分配是否符合医院的业务特点\n5. 检查同一父维度下的子维度比例之和是否等于100%\n\n# 输出格式\n请按照以下JSON格式输出：\n```json\n{{\n  \"is_valid\": true,\n  \"errors\": [],\n  \"warnings\": [],\n  \"suggestions\": []\n}}\n```\n\n注意：\n- is_valid: 布尔值，表示数据是否通过验证\n- errors: 严重错误列表，会导致数据不可用\n- warnings: 警告列表，数据可用但可能不够合理\n- suggestions: 改进建议列表"
+  }
+}

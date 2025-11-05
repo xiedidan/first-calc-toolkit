@@ -93,6 +93,12 @@ const routes: RouteRecordRaw[] = [
         name: 'Results',
         component: () => import('@/views/Results.vue'),
         meta: { title: '业务价值报表' }
+      },
+      {
+        path: '/hospitals',
+        name: 'Hospitals',
+        component: () => import('@/views/Hospitals.vue'),
+        meta: { title: '医疗机构管理', requiresAdmin: true }
       }
     ]
   }
