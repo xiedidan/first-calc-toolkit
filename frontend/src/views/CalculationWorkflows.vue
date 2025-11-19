@@ -88,6 +88,7 @@
       v-model="dialogVisible"
       :title="dialogTitle"
       width="600px"
+      custom-class="full-height-dialog"
       @close="handleDialogClose"
     >
       <el-form
@@ -137,6 +138,7 @@
       v-model="copyDialogVisible"
       title="复制流程"
       width="600px"
+      custom-class="full-height-dialog"
       @close="handleCopyDialogClose"
     >
       <el-form
@@ -169,6 +171,7 @@
       :title="`${currentWorkflow?.name} - 步骤管理`"
       width="90%"
       top="5vh"
+      custom-class="full-height-dialog"
       @close="handleStepsDialogClose"
     >
       <div class="steps-container">
@@ -223,6 +226,7 @@
       v-model="stepDialogVisible"
       :title="stepDialogTitle"
       width="800px"
+      custom-class="full-height-dialog"
       @close="handleStepDialogClose"
     >
       <el-form
@@ -346,7 +350,7 @@ const dataSourceList = ref<DataSource[]>([])
 const queryParams = reactive({
   version_id: undefined as number | undefined,
   page: 1,
-  size: 10,
+  size: 20,
   keyword: ''
 })
 

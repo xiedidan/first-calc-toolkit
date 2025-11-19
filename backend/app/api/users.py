@@ -45,7 +45,8 @@ async def get_users(
     # Format response
     items = []
     for user in users:
-        role_codes = [role.code for role in user.roles]
+        # 简化角色判断：有admin角色就是管理员，否则是普通用户
+        role = "admin" if any(r.code == "admin" for r in user.roles) else "user"
         hospital_name = user.hospital.name if user.hospital else None
         items.append(UserSchema(
             id=user.id,
@@ -57,7 +58,7 @@ async def get_users(
             hospital_name=hospital_name,
             created_at=user.created_at,
             updated_at=user.updated_at,
-            roles=role_codes
+            role=role
         ))
     
     return {
@@ -92,6 +93,27 @@ async def create_user(
                 detail="Email already exists"
             )
     
+    # 验证角色
+    if user_create.role not in ["admin", "user"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="角色必须是admin或user"
+        )
+    
+    # 普通用户必须指定医疗机构
+    if user_create.role == "user" and not user_create.hospital_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="普通用户必须指定所属医疗机构"
+        )
+    
+    # 管理员不能指定医疗机构
+    if user_create.role == "admin" and user_create.hospital_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="管理员不能指定所属医疗机构"
+        )
+    
     # Validate hospital_id if provided
     if user_create.hospital_id is not None:
         from app.models.hospital import Hospital
@@ -99,7 +121,7 @@ async def create_user(
         if not hospital:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Hospital ID {user_create.hospital_id} does not exist"
+                detail=f"医疗机构ID {user_create.hospital_id} 不存在"
             )
     
     # Create user
@@ -112,17 +134,21 @@ async def create_user(
         status="active"
     )
     
-    # Assign roles
-    if user_create.role_ids:
-        roles = db.query(Role).filter(Role.id.in_(user_create.role_ids)).all()
-        user.roles = roles
+    # 分配角色
+    role_obj = db.query(Role).filter(Role.code == user_create.role).first()
+    if not role_obj:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"角色 {user_create.role} 不存在"
+        )
+    user.roles = [role_obj]
     
     db.add(user)
     db.commit()
     db.refresh(user)
     
     # Format response
-    role_codes = [role.code for role in user.roles]
+    role = "admin" if any(r.code == "admin" for r in user.roles) else "user"
     hospital_name = user.hospital.name if user.hospital else None
     return UserSchema(
         id=user.id,
@@ -134,7 +160,7 @@ async def create_user(
         hospital_name=hospital_name,
         created_at=user.created_at,
         updated_at=user.updated_at,
-        roles=role_codes
+        role=role
     )
 
 
@@ -155,7 +181,7 @@ async def get_user(
         )
     
     # Format response
-    role_codes = [role.code for role in user.roles]
+    role = "admin" if any(r.code == "admin" for r in user.roles) else "user"
     hospital_name = user.hospital.name if user.hospital else None
     return UserSchema(
         id=user.id,
@@ -167,7 +193,7 @@ async def get_user(
         hospital_name=hospital_name,
         created_at=user.created_at,
         updated_at=user.updated_at,
-        roles=role_codes
+        role=role
     )
 
 
@@ -211,27 +237,52 @@ async def update_user(
     if user_update.status is not None:
         user.status = user_update.status
     
+    # Update role
+    if user_update.role is not None:
+        if user_update.role not in ["admin", "user"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="角色必须是admin或user"
+            )
+        
+        role_obj = db.query(Role).filter(Role.code == user_update.role).first()
+        if not role_obj:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"角色 {user_update.role} 不存在"
+            )
+        user.roles = [role_obj]
+        
+        # 如果改为管理员，清除医疗机构
+        if user_update.role == "admin":
+            user.hospital_id = None
+    
     # Update hospital_id
     if user_update.hospital_id is not None:
+        # 获取当前用户角色
+        current_role = "admin" if any(r.code == "admin" for r in user.roles) else "user"
+        
+        # 管理员不能设置医疗机构
+        if current_role == "admin":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="管理员不能指定所属医疗机构"
+            )
+        
         from app.models.hospital import Hospital
         hospital = db.query(Hospital).filter(Hospital.id == user_update.hospital_id).first()
         if not hospital:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Hospital ID {user_update.hospital_id} does not exist"
+                detail=f"医疗机构ID {user_update.hospital_id} 不存在"
             )
         user.hospital_id = user_update.hospital_id
-    
-    # Update roles
-    if user_update.role_ids is not None:
-        roles = db.query(Role).filter(Role.id.in_(user_update.role_ids)).all()
-        user.roles = roles
     
     db.commit()
     db.refresh(user)
     
     # Format response
-    role_codes = [role.code for role in user.roles]
+    role = "admin" if any(r.code == "admin" for r in user.roles) else "user"
     hospital_name = user.hospital.name if user.hospital else None
     return UserSchema(
         id=user.id,
@@ -243,7 +294,7 @@ async def update_user(
         hospital_name=hospital_name,
         created_at=user.created_at,
         updated_at=user.updated_at,
-        roles=role_codes
+        role=role
     )
 
 

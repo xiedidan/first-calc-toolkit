@@ -3,6 +3,7 @@
     v-model="visible"
     title="批量导入"
     width="900px"
+    custom-class="full-height-dialog"
     :close-on-click-modal="false"
     @close="handleClose"
   >

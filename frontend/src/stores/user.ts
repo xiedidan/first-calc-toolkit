@@ -61,7 +61,7 @@ export const useUserStore = defineStore('user', () => {
    * Check if user has role
    */
   function hasRole(role: string) {
-    return userInfo.value?.roles.includes(role) || false
+    return userInfo.value?.roles?.includes(role) || false
   }
 
   /**

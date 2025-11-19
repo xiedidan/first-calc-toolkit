@@ -115,7 +115,7 @@
         :page-sizes="[10, 20, 50, 100]"
         layout="total, sizes, prev, pager, next, jumper"
         @size-change="handleSizeChange"
-        @current-change="fetchDimensionItems"
+        @current-change="handlePageChange"
         class="pagination"
       />
     </el-card>
@@ -125,6 +125,7 @@
       v-model="dialogVisible"
       title="添加收费项目"
       width="600px"
+      custom-class="full-height-dialog"
     >
       <el-form>
         <el-form-item label="搜索收费项目">
@@ -180,6 +181,7 @@
       v-model="editDialogVisible"
       title="调整维度"
       width="500px"
+      custom-class="full-height-dialog"
     >
       <el-form label-width="120px">
         <el-form-item label="收费项目">
@@ -328,7 +330,12 @@ const handleShowOrphans = () => {
 // 处理每页数量变化
 const handleSizeChange = () => {
   pagination.page = 1 // 改变每页数量时重置到第一页
-  fetchDimensionItems()
+  fetchDimensionItems(showingOrphans.value)
+}
+
+// 处理页码变化
+const handlePageChange = () => {
+  fetchDimensionItems(showingOrphans.value)
 }
 
 // 打开添加对话框

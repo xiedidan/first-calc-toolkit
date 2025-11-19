@@ -104,6 +104,7 @@
       v-model="dialogVisible"
       :title="dialogTitle"
       width="600px"
+      custom-class="full-height-dialog"
       @close="handleDialogClose"
     >
       <el-form :model="form" :rules="rules" ref="formRef" label-width="100px">
@@ -139,6 +140,7 @@
       v-model="copyDialogVisible"
       title="复制版本"
       width="600px"
+      custom-class="full-height-dialog"
       @close="handleCopyDialogClose"
     >
       <el-alert

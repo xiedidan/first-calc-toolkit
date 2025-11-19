@@ -77,6 +77,18 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '数据源管理' }
       },
       {
+        path: '/data-templates',
+        name: 'DataTemplates',
+        component: () => import('@/views/DataTemplates.vue'),
+        meta: { title: '数据模板管理', requiresAdmin: true }
+      },
+      {
+        path: '/data-template-publish',
+        name: 'DataTemplatePublish',
+        component: () => import('@/views/DataTemplatePublish.vue'),
+        meta: { title: '数据模板发布' }
+      },
+      {
         path: '/system-settings',
         name: 'SystemSettings',
         component: () => import('@/views/SystemSettings.vue'),

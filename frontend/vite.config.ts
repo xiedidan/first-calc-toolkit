@@ -1,6 +1,6 @@
+import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
-import vue from '@vitejs/plugin-vue'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -28,9 +28,20 @@ export default defineConfig({
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'element-plus': ['element-plus'],
-          'vue-vendor': ['vue', 'vue-router', 'pinia']
+        manualChunks(id) {
+          // 将 node_modules 中的包分组
+          if (id.includes('node_modules')) {
+            // Element Plus 单独打包
+            if (id.includes('element-plus')) {
+              return 'element-plus'
+            }
+            // Vue 生态单独打包
+            if (id.includes('vue') || id.includes('pinia') || id.includes('@vue')) {
+              return 'vue-vendor'
+            }
+            // 其他第三方库
+            return 'vendor'
+          }
         }
       }
     }

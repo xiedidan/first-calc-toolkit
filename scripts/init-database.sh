@@ -57,23 +57,53 @@ for i in {1..30}; do
     sleep 2
 done
 
+# 先执行数据库迁移创建表结构
+echo ""
+echo ">>> 执行数据库迁移（创建表结构）..."
+docker exec hospital_backend_offline alembic upgrade head
+if [ $? -eq 0 ]; then
+    echo "✓ 数据库表结构创建完成"
+else
+    echo "✗ 数据库迁移失败"
+    exit 1
+fi
+
+# 初始化管理员用户
+echo ""
+echo ">>> 初始化管理员用户..."
+docker exec hospital_backend_offline python scripts/init_admin.py
+if [ $? -eq 0 ]; then
+    echo "✓ 管理员用户初始化完成"
+else
+    echo "⚠ 管理员用户初始化失败（可能已存在）"
+fi
+
 # 导入数据库数据
 if [ -f "database/database_export.json.gz" ]; then
     echo ""
     echo ">>> 导入数据库数据（使用Python脚本）..."
-    echo "⚠ 这将导入数据到数据库，是否继续? (y/n)"
+    echo "⚠ 这将导入数据到数据库"
+    echo "  - 已存在的记录将被跳过（避免主键冲突）"
+    echo "  - 数据将按照表依赖关系顺序导入"
+    echo ""
+    echo "是否继续? (y/n)"
     read -r response
     if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
         # 解压数据文件
+        echo ">>> 解压数据文件..."
         gunzip -c database/database_export.json.gz > database/database_export.json
         
         # 使用Docker容器内的Python导入数据
+        echo ">>> 复制数据文件到容器..."
         docker cp database/database_export.json hospital_backend_offline:/app/
+        
+        echo ">>> 开始导入数据..."
         docker exec hospital_backend_offline python import_database.py
         
         # 清理临时文件
         rm -f database/database_export.json
         
+        echo ""
         echo "✓ 数据库数据导入完成"
     else
         echo "跳过数据导入"
@@ -81,21 +111,30 @@ if [ -f "database/database_export.json.gz" ]; then
 elif [ -f "database/database_export.json" ]; then
     echo ""
     echo ">>> 导入数据库数据（使用Python脚本）..."
-    echo "⚠ 这将导入数据到数据库，是否继续? (y/n)"
+    echo "⚠ 这将导入数据到数据库"
+    echo "  - 已存在的记录将被跳过（避免主键冲突）"
+    echo "  - 数据将按照表依赖关系顺序导入"
+    echo ""
+    echo "是否继续? (y/n)"
     read -r response
     if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
         # 使用Docker容器内的Python导入数据
+        echo ">>> 复制数据文件到容器..."
         docker cp database/database_export.json hospital_backend_offline:/app/
+        
+        echo ">>> 开始导入数据..."
         docker exec hospital_backend_offline python import_database.py
         
+        echo ""
         echo "✓ 数据库数据导入完成"
     else
         echo "跳过数据导入"
     fi
 else
-    echo "⚠ 未找到数据库数据文件，跳过导入"
-    echo ">>> 执行数据库迁移..."
-    docker exec hospital_backend_offline alembic upgrade head || echo "⚠ 数据库迁移失败，容器可能未启动"
+    echo ""
+    echo "⚠ 未找到数据库数据文件"
+    echo "  期望文件: database/database_export.json.gz 或 database/database_export.json"
+    echo "  跳过数据导入"
 fi
 
 echo ""

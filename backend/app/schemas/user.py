@@ -18,8 +18,8 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     """Schema for creating user"""
     password: str = Field(..., min_length=6, max_length=50)
-    role_ids: List[int] = Field(default_factory=list)
-    hospital_id: Optional[int] = Field(None, description="所属医疗机构ID，为空表示超级用户")
+    role: str = Field(..., description="用户角色：admin或user")
+    hospital_id: Optional[int] = Field(None, description="所属医疗机构ID，管理员为空，普通用户必填")
 
 
 class UserUpdate(BaseModel):
@@ -27,9 +27,9 @@ class UserUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     email: Optional[EmailStr] = None
     password: Optional[str] = Field(None, min_length=6, max_length=50)
-    role_ids: Optional[List[int]] = None
+    role: Optional[str] = Field(None, description="用户角色：admin或user")
     status: Optional[UserStatus] = None
-    hospital_id: Optional[int] = Field(None, description="所属医疗机构ID，为空表示超级用户")
+    hospital_id: Optional[int] = Field(None, description="所属医疗机构ID，管理员为空，普通用户必填")
 
 
 class UserInDB(UserBase):
@@ -46,7 +46,7 @@ class UserInDB(UserBase):
 
 class User(UserInDB):
     """Schema for user response"""
-    roles: List[str] = Field(default_factory=list)  # Role codes
+    role: str = Field(..., description="用户角色：admin或user")
     hospital_name: Optional[str] = Field(None, description="所属医疗机构名称")
 
 

@@ -17,6 +17,7 @@
 
 | 参数 | 说明 | 示例值 | 批量模式值 | 用途 |
 |------|------|--------|-----------|------|
+| `{hospital_id}` | 医疗机构ID | `1` | `NULL` | 关联医疗机构表 |
 | `{department_id}` | 科室ID（系统内部） | `123` | `NULL` | 关联系统内部表 |
 | `{department_code}` | HIS科室代码 | `NK` | `""` (空字符串) | 关联HIS业务表 |
 | `{department_name}` | HIS科室名称 | `内科` | `""` (空字符串) | 显示或过滤 |
@@ -32,6 +33,7 @@
 | 参数 | 说明 | 示例值 | 用途 |
 |------|------|--------|------|
 | `{task_id}` | 当前计算任务ID | `abc123...` | 关联任务结果 |
+| `{version_id}` | 模型版本ID | `123` | 查询模型结构 |
 
 ---
 
@@ -205,7 +207,9 @@ GROUP BY d.id;
    - ❌ 错误：`WHERE dept_code = {department_code}`
 
 3. **数字类型参数**：以下参数是数字，不需要引号
+   - `{hospital_id}`
    - `{department_id}`
+   - `{version_id}`
    - `{year}`
    - `{month}`
 
@@ -244,12 +248,37 @@ GROUP BY d.id;
 ```sql
 -- 测试参数替换
 SELECT 
+    '{hospital_id}' as hospital_id,
     '{department_code}' as dept_code,
     '{department_name}' as dept_name,
     '{period}' as period,
     '{start_date}' as start_date,
     '{end_date}' as end_date
 ```
+
+### 测试功能说明
+
+在步骤编辑页面点击"测试运行"时，系统会自动使用以下默认参数值：
+
+| 参数 | 默认测试值 |
+|------|-----------|
+| `{current_year_month}` / `{period}` | `2025-10` |
+| `{year}` | `2025` |
+| `{month}` | `10` |
+| `{start_date}` | `2025-10-01` |
+| `{end_date}` | `2025-10-31` |
+| `{hospital_id}` | `1` |
+| `{department_id}` | `1` |
+| `{department_code}` | `TEST` |
+| `{department_name}` | `测试科室` |
+| `{cost_center_code}` | `CC001` |
+| `{cost_center_name}` | `测试成本中心` |
+| `{accounting_unit_code}` | `AU001` |
+| `{accounting_unit_name}` | `测试核算单元` |
+| `{task_id}` | `test-task-id` |
+| `{version_id}` | `1` |
+
+你也可以在测试时提供自定义参数值（通过 API 的 `test_params` 字段）。
 
 ---
 

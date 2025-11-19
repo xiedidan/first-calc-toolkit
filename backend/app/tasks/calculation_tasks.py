@@ -112,7 +112,8 @@ def execute_calculation_task(
                             task_id=task_id,
                             step=step,
                             department=department,  # 可能为 None
-                            period=period
+                            period=period,
+                            model_version_id=model_version_id
                         )
                     
                     # 更新进度
@@ -231,7 +232,8 @@ def execute_calculation_step(
     task_id: str,
     step: CalculationStep,
     department: Optional[Department],
-    period: str
+    period: str,
+    model_version_id: int
 ):
     """执行单个计算步骤
     
@@ -241,6 +243,7 @@ def execute_calculation_step(
         step: 计算步骤
         department: 科室对象，如果为 None 表示不针对特定科室（批量处理模式）
         period: 计算周期
+        model_version_id: 模型版本ID
     """
     start_time = datetime.now()
     
@@ -255,6 +258,7 @@ def execute_calculation_step(
         # 科室相关参数
         if department:
             # 指定了科室：使用具体科室的信息
+            code = code.replace("{hospital_id}", str(department.hospital_id))
             code = code.replace("{department_id}", str(department.id))
             code = code.replace("{department_code}", department.his_code or "")
             code = code.replace("{department_name}", department.his_name or "")
@@ -264,6 +268,9 @@ def execute_calculation_step(
             code = code.replace("{accounting_unit_name}", department.accounting_unit_name or "")
         else:
             # 未指定科室：使用空值或特殊标记
+            # 对于 hospital_id，需要从任务或其他地方获取
+            # 暂时使用 NULL，后续可以从 task 对象中获取
+            code = code.replace("{hospital_id}", "NULL")
             code = code.replace("{department_id}", "NULL")
             code = code.replace("{department_code}", "")
             code = code.replace("{department_name}", "")
@@ -288,6 +295,7 @@ def execute_calculation_step(
         
         # 任务相关参数
         code = code.replace("{task_id}", task_id)
+        code = code.replace("{version_id}", str(model_version_id))
         
         result_data = {}
         

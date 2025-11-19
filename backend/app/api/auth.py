@@ -63,8 +63,9 @@ async def get_current_user_info(
     """
     Get current user information
     """
-    # Get user roles
-    role_codes = [role.code for role in current_user.roles]
+    # 简化角色判断：有admin角色就是管理员，否则是普通用户
+    role = "admin" if any(r.code == "admin" for r in current_user.roles) else "user"
+    hospital_name = current_user.hospital.name if current_user.hospital else None
     
     return UserSchema(
         id=current_user.id,
@@ -72,7 +73,9 @@ async def get_current_user_info(
         name=current_user.name,
         email=current_user.email,
         status=current_user.status,
+        hospital_id=current_user.hospital_id,
+        hospital_name=hospital_name,
         created_at=current_user.created_at,
         updated_at=current_user.updated_at,
-        roles=role_codes
+        role=role
     )

@@ -23,3 +23,4 @@ class Hospital(Base):
     model_versions = relationship("ModelVersion", back_populates="hospital")
     departments = relationship("Department", back_populates="hospital")
     charge_items = relationship("ChargeItem", back_populates="hospital")
+    data_templates = relationship("DataTemplate", back_populates="hospital")

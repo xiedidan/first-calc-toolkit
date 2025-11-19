@@ -12,7 +12,7 @@
             <el-result icon="success" title="系统运行正常">
               <template #sub-title>
                 <p>欢迎您，{{ userStore.userInfo?.name }}</p>
-                <p>当前角色：{{ userStore.userInfo?.roles.join(', ') }}</p>
+                <p>当前角色：{{ userRolesDisplay }}</p>
               </template>
               <template #extra>
                 <el-button type="primary" @click="router.push('/users')">
@@ -58,7 +58,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { User, UserFilled, Avatar } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
@@ -66,6 +66,11 @@ import { getUserList } from '@/api/user'
 
 const router = useRouter()
 const userStore = useUserStore()
+
+// User roles display
+const userRolesDisplay = computed(() => {
+  return userStore.userInfo?.roles?.join(', ') || ''
+})
 
 const stats = ref({
   totalUsers: 0,

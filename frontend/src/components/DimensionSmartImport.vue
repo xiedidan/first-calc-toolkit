@@ -3,6 +3,7 @@
     v-model="visible"
     title="维度目录智能导入"
     width="90%"
+    custom-class="full-height-dialog"
     :close-on-click-modal="false"
     @close="handleClose"
   >

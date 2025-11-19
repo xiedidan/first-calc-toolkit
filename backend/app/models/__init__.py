@@ -16,7 +16,9 @@ from .model_version_import import ModelVersionImport
 from .calculation_step_log import CalculationStepLog
 from .calculation_step import CalculationStep
 from .calculation_workflow import CalculationWorkflow
+from .calculation_task import CalculationTask
 from .data_source import DataSource
+from .data_template import DataTemplate
 
 __all__ = [
     "User",
@@ -35,5 +37,7 @@ __all__ = [
     "CalculationWorkflow",
     "CalculationStep",
     "CalculationStepLog",
+    "CalculationTask",
     "DataSource",
+    "DataTemplate",
 ]

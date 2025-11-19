@@ -21,7 +21,9 @@ export interface UserInfo {
   status: string
   created_at: string
   updated_at: string
-  roles: string[]
+  role: 'admin' | 'user'
+  hospital_id?: number
+  hospital_name?: string
 }
 
 /**

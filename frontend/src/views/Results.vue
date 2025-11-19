@@ -103,7 +103,8 @@
     <!-- 明细对话框 -->
     <el-dialog 
       v-model="detailDialogVisible" 
-      :title="`${currentDepartment?.department_name} - 业务价值明细`" 
+      :title="`${currentDepartment?.department_name} - 业务价值明细`"
+      custom-class="full-height-dialog" 
       width="95%" 
       top="3vh"
       class="detail-dialog"

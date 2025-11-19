@@ -47,7 +47,7 @@
               <el-dropdown-item disabled>
                 <div class="user-detail">
                   <div>用户名: {{ userStore.userInfo?.username }}</div>
-                  <div>角色: {{ userStore.userInfo?.roles.join(', ') }}</div>
+                  <div>角色: {{ userRolesDisplay }}</div>
                 </div>
               </el-dropdown-item>
               <el-dropdown-item divided command="logout">
@@ -77,10 +77,13 @@
             <span>首页</span>
           </el-menu-item>
 
-          <!-- 数据模型管理 (未实现) -->
-          <el-menu-item index="/data-model" disabled>
+          <!-- 数据模板发布 -->
+          <el-menu-item 
+            index="/data-template-publish"
+            :disabled="!isMenuItemEnabled('/data-template-publish')"
+          >
             <el-icon><Grid /></el-icon>
-            <span>数据模型管理</span>
+            <span>数据模板发布</span>
           </el-menu-item>
 
           <!-- 数据质量报告 (未实现) -->
@@ -156,6 +159,12 @@
             </template>
             <el-menu-item index="/departments">科室对照管理</el-menu-item>
             <el-menu-item index="/charge-items">收费项目管理</el-menu-item>
+            <el-menu-item 
+              v-if="isAdmin"
+              index="/data-templates"
+            >
+              数据模板管理
+            </el-menu-item>
           </el-sub-menu>
 
           <!-- 数据源管理 -->
@@ -237,6 +246,11 @@ const isAdmin = computed(() => {
   return userStore.hasRole('admin') || userStore.hasRole('系统管理员')
 })
 
+// User roles display
+const userRolesDisplay = computed(() => {
+  return userStore.userInfo?.roles?.join(', ') || ''
+})
+
 // Check if menu item should be enabled
 const isMenuItemEnabled = (menuPath: string) => {
   return hospitalStore.isMenuEnabled(menuPath)
@@ -273,8 +287,8 @@ const handleHospitalSwitch = async (hospitalId: number) => {
   try {
     await hospitalStore.activate(hospitalId)
     ElMessage.success('切换医疗机构成功')
-    // Reload current page data
-    router.go(0)
+    // Navigate to dashboard instead of reloading
+    router.push('/dashboard')
   } catch (error) {
     ElMessage.error('切换医疗机构失败')
   }

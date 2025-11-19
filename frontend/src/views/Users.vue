@@ -43,16 +43,16 @@
         <el-table-column prop="username" label="用户名" width="150" />
         <el-table-column prop="name" label="姓名" width="150" />
         <el-table-column prop="email" label="邮箱" />
-        <el-table-column prop="roles" label="角色" width="200">
+        <el-table-column prop="role" label="角色" width="120">
           <template #default="{ row }">
-            <el-tag
-              v-for="role in row.roles"
-              :key="role"
-              size="small"
-              style="margin-right: 5px"
-            >
-              {{ role }}
+            <el-tag :type="row.role === 'admin' ? 'danger' : 'primary'" size="small">
+              {{ row.role === 'admin' ? '管理员' : '普通用户' }}
             </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="hospital_name" label="所属医疗机构" width="200">
+          <template #default="{ row }">
+            {{ row.hospital_name || '-' }}
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
@@ -102,6 +102,7 @@
     <el-dialog
       v-model="dialogVisible"
       :title="dialogTitle"
+      custom-class="full-height-dialog"
       width="600px"
       @close="handleDialogClose"
     >
@@ -132,6 +133,30 @@
             show-password
           />
         </el-form-item>
+        <el-form-item label="角色" prop="role">
+          <el-radio-group v-model="formData.role" @change="handleRoleChange">
+            <el-radio label="admin">管理员</el-radio>
+            <el-radio label="user">普通用户</el-radio>
+          </el-radio-group>
+          <div style="color: #909399; font-size: 12px; margin-top: 5px;">
+            管理员可访问所有医疗机构，普通用户只能访问所属医疗机构
+          </div>
+        </el-form-item>
+        <el-form-item label="所属医疗机构" prop="hospital_id" v-if="formData.role === 'user'">
+          <el-select
+            v-model="formData.hospital_id"
+            placeholder="请选择医疗机构"
+            filterable
+            style="width: 100%"
+          >
+            <el-option
+              v-for="hospital in hospitalList"
+              :key="hospital.id"
+              :label="hospital.name"
+              :value="hospital.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="状态" prop="status" v-if="isEdit">
           <el-radio-group v-model="formData.status">
             <el-radio label="active">正常</el-radio>
@@ -155,6 +180,7 @@ import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'elem
 import { Plus, Search, Refresh } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { getUserList, createUser, updateUser, deleteUser, type UserInfo } from '@/api/user'
+import { getAccessibleHospitals, type Hospital } from '@/api/hospital'
 
 const userStore = useUserStore()
 
@@ -167,10 +193,13 @@ const searchForm = reactive({
 const tableData = ref<UserInfo[]>([])
 const loading = ref(false)
 
+// Hospital list
+const hospitalList = ref<Hospital[]>([])
+
 // Pagination
 const pagination = reactive({
   page: 1,
-  size: 10,
+  size: 20,
   total: 0
 })
 
@@ -189,7 +218,8 @@ const formData = reactive({
   email: '',
   password: '',
   status: 'active',
-  role_ids: []
+  role: 'user' as 'admin' | 'user',
+  hospital_id: undefined as number | undefined
 })
 
 // Form rules
@@ -217,6 +247,21 @@ const formRules: FormRules = {
       },
       trigger: 'blur'
     }
+  ],
+  role: [
+    { required: true, message: '请选择角色', trigger: 'change' }
+  ],
+  hospital_id: [
+    {
+      validator: (rule, value, callback) => {
+        if (formData.role === 'user' && !value) {
+          callback(new Error('普通用户必须选择所属医疗机构'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'change'
+    }
   ]
 }
 
@@ -235,6 +280,15 @@ const fetchData = async () => {
     console.error('Failed to fetch users:', error)
   } finally {
     loading.value = false
+  }
+}
+
+// Fetch hospitals
+const fetchHospitals = async () => {
+  try {
+    hospitalList.value = await getAccessibleHospitals()
+  } catch (error) {
+    console.error('Failed to fetch hospitals:', error)
   }
 }
 
@@ -269,7 +323,19 @@ const handleEdit = (row: UserInfo) => {
   formData.email = row.email || ''
   formData.password = ''
   formData.status = row.status
+  formData.role = row.role
+  formData.hospital_id = row.hospital_id
   dialogVisible.value = true
+}
+
+// Handle role change
+const handleRoleChange = () => {
+  // 切换为管理员时清空医疗机构
+  if (formData.role === 'admin') {
+    formData.hospital_id = undefined
+  }
+  // 触发表单验证
+  formRef.value?.validateField('hospital_id')
 }
 
 // Delete
@@ -306,10 +372,14 @@ const handleSubmit = async () => {
           const updateData: any = {
             name: formData.name,
             email: formData.email || undefined,
-            status: formData.status
+            status: formData.status,
+            role: formData.role
           }
           if (formData.password) {
             updateData.password = formData.password
+          }
+          if (formData.role === 'user' && formData.hospital_id) {
+            updateData.hospital_id = formData.hospital_id
           }
           await updateUser(formData.id, updateData)
           ElMessage.success('更新成功')
@@ -320,7 +390,8 @@ const handleSubmit = async () => {
             name: formData.name,
             email: formData.email || undefined,
             password: formData.password,
-            role_ids: []
+            role: formData.role,
+            hospital_id: formData.role === 'user' ? formData.hospital_id : undefined
           })
           ElMessage.success('创建成功')
         }
@@ -349,12 +420,14 @@ const resetForm = () => {
   formData.email = ''
   formData.password = ''
   formData.status = 'active'
-  formData.role_ids = []
+  formData.role = 'user'
+  formData.hospital_id = undefined
 }
 
 // Initialize
 onMounted(() => {
   fetchData()
+  fetchHospitals()
 })
 </script>
 

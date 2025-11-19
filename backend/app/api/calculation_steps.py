@@ -274,6 +274,52 @@ def move_step_down(
     return {"success": True, "message": "下移成功"}
 
 
+def _replace_sql_parameters(code: str, test_params: Optional[dict] = None) -> str:
+    """
+    替换 SQL 中的参数占位符
+    
+    Args:
+        code: SQL 代码
+        test_params: 测试参数字典
+        
+    Returns:
+        替换后的 SQL 代码
+    """
+    if not test_params:
+        # 如果没有提供测试参数，使用默认值
+        test_params = {}
+    
+    # 设置默认值
+    defaults = {
+        "current_year_month": "2025-10",
+        "period": "2025-10",
+        "year": "2025",
+        "month": "10",
+        "start_date": "2025-10-01",
+        "end_date": "2025-10-31",
+        "hospital_id": "1",
+        "department_id": "1",
+        "department_code": "TEST",
+        "department_name": "测试科室",
+        "cost_center_code": "CC001",
+        "cost_center_name": "测试成本中心",
+        "accounting_unit_code": "AU001",
+        "accounting_unit_name": "测试核算单元",
+        "task_id": "test-task-id",
+        "version_id": "1",
+    }
+    
+    # 合并用户提供的参数（用户参数优先）
+    params = {**defaults, **test_params}
+    
+    # 替换所有参数
+    for key, value in params.items():
+        placeholder = "{" + key + "}"
+        code = code.replace(placeholder, str(value))
+    
+    return code
+
+
 @router.post("/{step_id}/test", response_model=TestCodeResponse)
 def test_step_code(
     step_id: int,
@@ -311,8 +357,9 @@ def test_step_code(
                 # 如果连接池不存在，创建一个
                 pool = connection_manager.create_pool(data_source)
             
-            # 执行SQL
+            # 替换 SQL 参数
             sql_content = step.code_content.strip()
+            sql_content = _replace_sql_parameters(sql_content, test_request.test_params)
             
             # 使用连接池执行查询
             with pool.connect() as connection:
@@ -413,8 +460,9 @@ def test_code_without_save(
                 # 如果连接池不存在，创建一个
                 pool = connection_manager.create_pool(data_source)
             
-            # 执行SQL
+            # 替换 SQL 参数
             sql_content = test_request.code_content.strip()
+            sql_content = _replace_sql_parameters(sql_content, test_request.test_params)
             
             # 使用连接池执行查询
             with pool.connect() as connection:

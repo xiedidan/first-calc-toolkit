@@ -22,7 +22,7 @@ export const useHospitalStore = defineStore('hospital', () => {
    * Check if menu should be enabled
    * Only system settings and data sources are enabled when no hospital is activated
    */
-  const isMenuEnabled = computed(() => (menuPath: string) => {
+  const isMenuEnabled = (menuPath: string) => {
     if (isHospitalActivated.value) {
       return true
     }
@@ -30,7 +30,7 @@ export const useHospitalStore = defineStore('hospital', () => {
     return menuPath === '/system-settings' || 
            menuPath === '/users' ||
            menuPath === '/data-sources'
-  })
+  }
 
   // Actions
   /**
@@ -41,9 +41,14 @@ export const useHospitalStore = defineStore('hospital', () => {
       const hospitals = await getAccessibleHospitals() as Hospital[]
       accessibleHospitals.value = hospitals
       
-      // Auto-activate if only one hospital is accessible
+      // Auto-activate if only one hospital is accessible and not already activated
       if (hospitals.length === 1 && !currentHospital.value) {
-        await activate(hospitals[0].id)
+        const hospitalId = hospitals[0].id
+        // Check if this hospital was already activated to prevent loops
+        const savedId = localStorage.getItem('currentHospitalId')
+        if (savedId !== hospitalId.toString()) {
+          await activate(hospitalId)
+        }
       }
       
       return hospitals

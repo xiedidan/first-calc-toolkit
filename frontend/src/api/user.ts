@@ -20,7 +20,8 @@ export interface CreateUserData {
   name: string
   email?: string
   password: string
-  role_ids?: number[]
+  role: 'admin' | 'user'
+  hospital_id?: number
 }
 
 export interface UpdateUserData {
@@ -28,7 +29,8 @@ export interface UpdateUserData {
   email?: string
   password?: string
   status?: string
-  role_ids?: number[]
+  role?: 'admin' | 'user'
+  hospital_id?: number
 }
 
 /**

@@ -1,0 +1,86 @@
+DROP TABLE IF EXISTS "TB_CIS_BWZHLJL";
+CREATE TABLE "TB_CIS_BWZHLJL" (
+    "YLJGDM" varchar(33),
+    "BWZHLJLLSH" varchar(96),
+    "BRZSY" varchar(96),
+    "NLS" numeric,
+    "NLY" varchar(12),
+    "NLH" varchar(48),
+    "JZLSH" varchar(96),
+    "MZZYBZ" varchar(2),
+    "MZZYH" varchar(27),
+    "KSMC" varchar(108),
+    "KSDM" varchar(54),
+    "BQMC" varchar(108),
+    "BFH" varchar(15),
+    "BCH" varchar(15),
+    "HLDJDM" varchar(2),
+    "HLLXDM" varchar(2),
+    "GMS" varchar(1500),
+    "JBZDBM" varchar(750),
+    "JBZDMC" varchar(1500),
+    "TW" numeric,
+    "SSY" numeric,
+    "SZY" numeric,
+    "TZ" numeric,
+    "HXPLC" numeric,
+    "XLC" numeric,
+    "XTJCZ" numeric,
+    "YSQKDM" varchar(2),
+    "HXJJHXM" varchar(30),
+    "HSXM" varchar(108),
+    "HSGH" varchar(54),
+    "QMRQSJ" timestamp,
+    "HLGCXMMC" varchar(300),
+    "HLGCJG" varchar(1500),
+    "HLCZMC" varchar(150),
+    "HLCZXMLMMC" varchar(150),
+    "HLCZJG" varchar(1500),
+    "BLSXSJ" timestamp,
+    "TBRQ" timestamp,
+    "XGBZ" varchar(2),
+    "YLYL1" varchar(192),
+    "YLYL2" varchar(192)
+);
+COMMENT ON TABLE "TB_CIS_BWZHLJL" IS '病危（重）护理记录';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."YLJGDM" IS '医疗机构代码';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."BWZHLJLLSH" IS '病危（重）护理记录流水号';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."BRZSY" IS '患者主索引';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."NLS" IS '年龄（岁）';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."NLY" IS '年龄（月）';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."NLH" IS '年龄（小时）';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."JZLSH" IS '就诊流水号';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."MZZYBZ" IS '门诊/住院标志';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."MZZYH" IS '门诊/住院号';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."KSMC" IS '科室名称';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."KSDM" IS '科室代码';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."BQMC" IS '病区名称';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."BFH" IS '病房号';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."BCH" IS '病床号';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."HLDJDM" IS '护理等级代码';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."HLLXDM" IS '护理类型代码';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."GMS" IS '过敏史';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."JBZDBM" IS '疾病诊断编码';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."JBZDMC" IS '疾病诊断名称';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."TW" IS '体温(℃)';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."SSY" IS '收缩压（mmHg)';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."SZY" IS '舒张压(mmHg)';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."TZ" IS '体重（kg)';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."HXPLC" IS '呼吸频率(次/min)';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."XLC" IS '心率(次/min)';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."XTJCZ" IS '血糖检测值';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."YSQKDM" IS '饮食情况代码';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."HXJJHXM" IS '呼吸机监护项目';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."HSXM" IS '护士姓名';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."HSGH" IS '护士编号';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."QMRQSJ" IS '签名日期时间';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."HLGCXMMC" IS '护理观察项目名称';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."HLGCJG" IS '护理观察结果';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."HLCZMC" IS '护理操作名称';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."HLCZXMLMMC" IS '护理操作项目类目名称';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."HLCZJG" IS '护理操作结果';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."BLSXSJ" IS '病历书写时间';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."TBRQ" IS '数据上传时间';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."XGBZ" IS '修改标志';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."YLYL1" IS '预留一';
+COMMENT ON COLUMN "TB_CIS_BWZHLJL"."YLYL2" IS '预留二';

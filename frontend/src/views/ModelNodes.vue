@@ -87,6 +87,7 @@
       v-model="dialogVisible"
       :title="dialogTitle"
       width="800px"
+      custom-class="full-height-dialog"
       @close="handleDialogClose"
     >
       <el-form :model="form" :rules="rules" ref="formRef" label-width="120px">
@@ -223,6 +224,7 @@
       v-model="testResultVisible"
       title="测试结果"
       width="700px"
+      custom-class="full-height-dialog"
     >
       <el-alert
         :title="testResult.success ? '测试成功' : '测试失败'"

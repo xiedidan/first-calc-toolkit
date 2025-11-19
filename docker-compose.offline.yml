@@ -39,7 +39,7 @@ services:
       redis:
         condition: service_healthy
     restart: always
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    command: python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
     extra_hosts:
       # 允许容器访问宿主机的PostgreSQL
       - "host.docker.internal:host-gateway"

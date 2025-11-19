@@ -93,6 +93,7 @@
       v-model="dialogVisible"
       :title="dialogTitle"
       width="600px"
+      custom-class="full-height-dialog"
       @close="handleDialogClose"
     >
       <el-form
@@ -181,7 +182,7 @@ const searchForm = reactive({
 
 const pagination = reactive({
   page: 1,
-  size: 10,
+  size: 20,
   total: 0
 })
 
