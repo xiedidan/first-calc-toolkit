@@ -3,6 +3,7 @@
     v-model="visible"
     title="数据模板详情"
     width="900px"
+    append-to-body
     :close-on-click-modal="false"
   >
     <div v-loading="loading" class="detail-container">

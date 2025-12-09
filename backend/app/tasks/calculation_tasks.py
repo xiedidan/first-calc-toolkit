@@ -17,6 +17,7 @@ from app.models.calculation_step import CalculationStep
 from app.models.calculation_step_log import CalculationStepLog
 from app.models.department import Department
 from app.models.model_node import ModelNode
+from app.models.model_version import ModelVersion
 from app.models.data_source import DataSource
 
 
@@ -57,7 +58,21 @@ def execute_calculation_task(
         task.status = "running"
         task.started_at = datetime.now()
         db.commit()
-        print(f"任务 {task_id} 开始执行")
+        print(f"[INFO] 任务 {task_id} 开始执行")
+        print(f"[INFO] 参数: model_version_id={model_version_id}, workflow_id={workflow_id}, period={period}")
+        print(f"[INFO] department_ids={department_ids}")
+        
+        # 获取医疗机构ID（从模型版本获取）
+        model_version = db.query(ModelVersion).filter(ModelVersion.id == model_version_id).first()
+        if not model_version:
+            task.status = "failed"
+            task.error_message = "模型版本不存在"
+            task.completed_at = datetime.now()
+            db.commit()
+            return {"success": False, "error": "模型版本不存在"}
+        
+        hospital_id = model_version.hospital_id
+        print(f"[INFO] 医疗机构ID: {hospital_id}")
         
         # 获取要计算的科室列表
         if department_ids:
@@ -99,21 +114,29 @@ def execute_calculation_task(
                 CalculationStep.is_enabled == True
             ).order_by(CalculationStep.sort_order).all()
             
+            print(f"[INFO] 找到 {len(steps)} 个启用的步骤")
+            print(f"[INFO] 需要处理 {total_departments} 个科室/批次")
+            
             # 执行计算流程
             has_failed_step = False
             failed_error = None
             
             for idx, department in enumerate(departments):
+                dept_name = department.his_name if department else "全部科室"
+                print(f"[INFO] 处理第 {idx+1}/{total_departments} 个: {dept_name}")
+                
                 try:
                     # 执行所有步骤
                     for step in steps:
+                        print(f"[INFO] 执行步骤 {step.id}: {step.name}")
                         execute_calculation_step(
                             db=db,
                             task_id=task_id,
                             step=step,
                             department=department,  # 可能为 None
                             period=period,
-                            model_version_id=model_version_id
+                            model_version_id=model_version_id,
+                            hospital_id=hospital_id
                         )
                     
                     # 更新进度
@@ -233,7 +256,8 @@ def execute_calculation_step(
     step: CalculationStep,
     department: Optional[Department],
     period: str,
-    model_version_id: int
+    model_version_id: int,
+    hospital_id: int
 ):
     """执行单个计算步骤
     
@@ -244,6 +268,7 @@ def execute_calculation_step(
         department: 科室对象，如果为 None 表示不针对特定科室（批量处理模式）
         period: 计算周期
         model_version_id: 模型版本ID
+        hospital_id: 医疗机构ID
     """
     start_time = datetime.now()
     
@@ -254,6 +279,7 @@ def execute_calculation_step(
         # 基础参数
         code = code.replace("{current_year_month}", period)
         code = code.replace("{period}", period)  # 别名
+        code = code.replace("{year_month}", period)  # 导向调整步骤使用
         
         # 科室相关参数
         if department:
@@ -267,10 +293,8 @@ def execute_calculation_step(
             code = code.replace("{accounting_unit_code}", department.accounting_unit_code or "")
             code = code.replace("{accounting_unit_name}", department.accounting_unit_name or "")
         else:
-            # 未指定科室：使用空值或特殊标记
-            # 对于 hospital_id，需要从任务或其他地方获取
-            # 暂时使用 NULL，后续可以从 task 对象中获取
-            code = code.replace("{hospital_id}", "NULL")
+            # 未指定科室：批量处理模式，使用传入的hospital_id
+            code = code.replace("{hospital_id}", str(hospital_id))
             code = code.replace("{department_id}", "NULL")
             code = code.replace("{department_code}", "")
             code = code.replace("{department_name}", "")
@@ -303,29 +327,62 @@ def execute_calculation_step(
         if step.code_type == "sql":
             # 执行SQL代码
             if not step.data_source_id:
-                raise ValueError("SQL步骤必须指定数据源")
+                raise ValueError(f"SQL步骤 '{step.name}' 必须指定数据源，请在前端编辑步骤并选择数据源")
             
             # 获取数据源
             data_source = db.query(DataSource).filter(DataSource.id == step.data_source_id).first()
             if not data_source:
                 raise ValueError(f"数据源不存在: {step.data_source_id}")
             
+            print(f"[DEBUG] 步骤 {step.id} 使用数据源: {data_source.name} (ID: {data_source.id})")
+            
             # 获取或创建连接池
             from app.services.data_source_service import connection_manager
             
             pool = connection_manager.get_pool(data_source.id)
             if not pool:
+                print(f"[DEBUG] 创建新的连接池: {data_source.name}")
                 pool = connection_manager.create_pool(data_source)
             
             # 执行SQL
+            print(f"[DEBUG] 开始执行SQL，task_id={task_id}")
+            print(f"[DEBUG] 步骤名称: {step.name}")
+            print(f"[DEBUG] SQL模板前100字符: {code[:100]}...")
+            print(f"[DEBUG] SQL模板包含'cr.weight': {'cr.weight' in code}")
+            print(f"[DEBUG] SQL模板包含'ms.weight': {'ms.weight' in code}")
             with pool.connect() as connection:
-                result = connection.execute(text(code))
+                # 分割多个SQL语句（以分号分隔）
+                statements = []
+                for s in code.split(';'):
+                    s = s.strip()
+                    if not s:
+                        continue
+                    # 过滤掉纯注释的语句
+                    lines = [line.strip() for line in s.split('\n') if line.strip() and not line.strip().startswith('--')]
+                    if lines:
+                        statements.append(s)
                 
-                # 获取列名和数据
-                if result.returns_rows:
-                    columns = list(result.keys())
+                last_result = None
+                total_affected = 0
+                
+                for statement in statements:
+                    result = connection.execute(text(statement))
+                    last_result = result
+                    
+                    # 如果是DML语句，累计影响行数
+                    if hasattr(result, 'rowcount') and result.rowcount > 0:
+                        total_affected += result.rowcount
+                
+                # 提交事务
+                print(f"[DEBUG] 提交事务，共执行 {len(statements)} 个语句，影响 {total_affected} 行")
+                connection.commit()
+                print(f"[DEBUG] 事务提交成功")
+                
+                # 处理最后一个语句的结果
+                if last_result and last_result.returns_rows:
+                    columns = list(last_result.keys())
                     rows = []
-                    for row in result.fetchall():
+                    for row in last_result.fetchall():
                         row_dict = {}
                         for key, value in row._mapping.items():
                             # 将 datetime 对象转换为字符串
@@ -340,14 +397,15 @@ def execute_calculation_step(
                     result_data = {
                         "columns": columns,
                         "rows": rows,
-                        "row_count": len(rows)
+                        "row_count": len(rows),
+                        "total_affected": total_affected
                     }
                 else:
                     # DDL/DML 语句
-                    connection.commit()
                     result_data = {
                         "message": "SQL执行成功",
-                        "affected_rows": result.rowcount if hasattr(result, 'rowcount') else 0
+                        "affected_rows": total_affected,
+                        "statements_executed": len(statements)
                     }
                     
         elif step.code_type == "python":

@@ -48,6 +48,7 @@ class CalculationWorkflowCopyRequest(BaseModel):
     """复制计算流程请求Schema"""
     name: str = Field(..., description="新流程名称", min_length=1, max_length=200)
     description: Optional[str] = Field(None, description="新流程描述")
+    target_version_id: Optional[int] = Field(None, description="目标模型版本ID（不指定则复制到原版本）", gt=0)
 
 
 class CalculationWorkflowCopyResponse(BaseModel):

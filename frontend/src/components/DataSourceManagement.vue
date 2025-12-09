@@ -30,6 +30,7 @@
       border
       style="width: 100%; margin-top: 20px"
     >
+      <el-table-column prop="id" label="ID" width="80" />
       <el-table-column prop="name" label="数据源名称" min-width="150" />
       <el-table-column prop="db_type" label="数据库类型" width="120">
         <template #default="{ row }">
@@ -122,6 +123,7 @@
       v-model="dialogVisible"
       :title="dialogTitle"
       width="600px"
+      append-to-body
       @close="resetForm"
     >
       <el-form

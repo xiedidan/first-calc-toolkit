@@ -1,0 +1,27 @@
+# Offline Package Exclude List
+# These tables will export structure only, not data (large data tables)
+# All other tables will automatically export data
+#
+# Format: one table name per line
+# Lines starting with # are comments
+
+# Charge details table (hundreds of thousands to millions of rows)
+charge_details
+
+# Calculation results table (tens of thousands to hundreds of thousands of rows)
+calculation_results
+
+# Calculation tasks table (hundreds to thousands of rows)
+calculation_tasks
+
+# Orientation adjustment details table (tens of thousands to hundreds of thousands of rows)
+orientation_adjustment_details
+
+# Orientation values table (thousands to tens of thousands of rows)
+orientation_values
+
+# Cost values table (thousands to tens of thousands of rows)
+cost_values
+
+# Department revenues table (thousands to tens of thousands of rows)
+department_revenues

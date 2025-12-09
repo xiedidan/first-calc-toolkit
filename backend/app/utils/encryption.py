@@ -82,3 +82,49 @@ def encrypt_password(password: str) -> str:
 def decrypt_password(encrypted_password: str) -> str:
     """解密密码"""
     return encryption_manager.decrypt(encrypted_password)
+
+
+def encrypt_api_key(api_key: str) -> str:
+    """
+    加密API密钥
+    
+    Args:
+        api_key: 明文API密钥
+        
+    Returns:
+        加密后的API密钥（Base64编码）
+    """
+    return encryption_manager.encrypt(api_key)
+
+
+def decrypt_api_key(encrypted_api_key: str) -> str:
+    """
+    解密API密钥
+    
+    Args:
+        encrypted_api_key: 加密的API密钥（Base64编码）
+        
+    Returns:
+        解密后的明文API密钥
+    """
+    return encryption_manager.decrypt(encrypted_api_key)
+
+
+def mask_api_key(encrypted_api_key: str) -> str:
+    """
+    掩码显示API密钥
+    
+    Args:
+        encrypted_api_key: 加密的API密钥
+        
+    Returns:
+        掩码后的显示字符串（如 "****abcd"）
+    """
+    if not encrypted_api_key:
+        return "****"
+    
+    # 显示最后4个字符，其余用星号代替
+    if len(encrypted_api_key) > 4:
+        return "****" + encrypted_api_key[-4:]
+    else:
+        return "****"

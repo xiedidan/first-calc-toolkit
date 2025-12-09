@@ -42,6 +42,10 @@ let isRedirecting = false
 // Response interceptor
 request.interceptors.response.use(
   (response: AxiosResponse) => {
+    // For blob responses, return the full response to preserve headers
+    if (response.config.responseType === 'blob') {
+      return response
+    }
     return response.data
   },
   (error: AxiosError) => {

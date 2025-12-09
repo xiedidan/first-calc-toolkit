@@ -25,9 +25,14 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True,  # 启动时重试连接
     broker_connection_retry=True,  # 启用连接重试
     broker_connection_max_retries=3,  # 最多重试3次
+    broker_connection_timeout=5,  # 连接超时5秒
+    result_backend_transport_options={
+        'socket_timeout': 5,  # Redis socket超时5秒
+    },
 )
 
 # 导入任务模块（必须在配置之后）
 # 这样 Celery worker 启动时会自动注册这些任务
 from app.tasks import import_tasks  # noqa: F401
 from app.tasks import calculation_tasks  # noqa: F401
+from app.tasks import classification_tasks  # noqa: F401

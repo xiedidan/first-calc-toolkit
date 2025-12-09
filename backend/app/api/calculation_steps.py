@@ -285,9 +285,17 @@ def _replace_sql_parameters(code: str, test_params: Optional[dict] = None) -> st
     Returns:
         替换后的 SQL 代码
     """
+    import uuid
+    from datetime import datetime
+    
     if not test_params:
         # 如果没有提供测试参数，使用默认值
         test_params = {}
+    
+    # 生成唯一的测试任务ID
+    unique_suffix = str(uuid.uuid4())[:8]  # 取UUID的前8位
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    unique_task_id = f"test-task-{timestamp}-{unique_suffix}"
     
     # 设置默认值
     defaults = {
@@ -305,7 +313,7 @@ def _replace_sql_parameters(code: str, test_params: Optional[dict] = None) -> st
         "cost_center_name": "测试成本中心",
         "accounting_unit_code": "AU001",
         "accounting_unit_name": "测试核算单元",
-        "task_id": "test-task-id",
+        "task_id": unique_task_id,
         "version_id": "1",
     }
     
@@ -363,26 +371,48 @@ def test_step_code(
             
             # 使用连接池执行查询
             with pool.connect() as connection:
-                result = connection.execute(text(sql_content))
+                # 分割多个SQL语句（以分号分隔）
+                statements = []
+                for s in sql_content.split(';'):
+                    s = s.strip()
+                    if not s:
+                        continue
+                    # 过滤掉纯注释的语句
+                    lines = [line.strip() for line in s.split('\n') if line.strip() and not line.strip().startswith('--')]
+                    if lines:
+                        statements.append(s)
                 
-                # 获取列名和数据（只有查询语句才有返回结果）
-                if result.returns_rows:
-                    columns = list(result.keys())
-                    rows = [dict(row._mapping) for row in result.fetchall()]
+                last_result = None
+                total_affected = 0
+                
+                for statement in statements:
+                    result = connection.execute(text(statement))
+                    last_result = result
+                    
+                    # 如果是DML语句，累计影响行数
+                    if hasattr(result, 'rowcount') and result.rowcount > 0:
+                        total_affected += result.rowcount
+                
+                # 提交事务（重要！）
+                connection.commit()
+                
+                # 处理最后一个语句的结果
+                if last_result and last_result.returns_rows:
+                    columns = list(last_result.keys())
+                    rows = [dict(row._mapping) for row in last_result.fetchall()]
                 else:
-                    # DDL/DML 语句（CREATE, INSERT, UPDATE, DELETE 等）
                     columns = []
                     rows = []
-                    # 提交事务（对于非查询语句）
-                    connection.commit()
             
             duration_ms = int((time.time() - start_time) * 1000)
             
             # 根据是否有返回结果生成不同的消息
             if columns:
                 message = f"SQL执行成功，返回 {len(rows)} 行数据"
+                if total_affected > 0:
+                    message += f"，影响 {total_affected} 行"
             else:
-                message = "SQL执行成功"
+                message = f"SQL执行成功，影响 {total_affected} 行"
             
             return {
                 "success": True,
@@ -391,7 +421,9 @@ def test_step_code(
                     "message": message,
                     "columns": columns,
                     "rows": rows,
-                    "row_count": len(rows)
+                    "row_count": len(rows),
+                    "affected_rows": total_affected,
+                    "statements_executed": len(statements)
                 }
             }
             
@@ -466,26 +498,48 @@ def test_code_without_save(
             
             # 使用连接池执行查询
             with pool.connect() as connection:
-                result = connection.execute(text(sql_content))
+                # 分割多个SQL语句（以分号分隔）
+                statements = []
+                for s in sql_content.split(';'):
+                    s = s.strip()
+                    if not s:
+                        continue
+                    # 过滤掉纯注释的语句
+                    lines = [line.strip() for line in s.split('\n') if line.strip() and not line.strip().startswith('--')]
+                    if lines:
+                        statements.append(s)
                 
-                # 获取列名和数据（只有查询语句才有返回结果）
-                if result.returns_rows:
-                    columns = list(result.keys())
-                    rows = [dict(row._mapping) for row in result.fetchall()]
+                last_result = None
+                total_affected = 0
+                
+                for statement in statements:
+                    result = connection.execute(text(statement))
+                    last_result = result
+                    
+                    # 如果是DML语句，累计影响行数
+                    if hasattr(result, 'rowcount') and result.rowcount > 0:
+                        total_affected += result.rowcount
+                
+                # 提交事务（重要！）
+                connection.commit()
+                
+                # 处理最后一个语句的结果
+                if last_result and last_result.returns_rows:
+                    columns = list(last_result.keys())
+                    rows = [dict(row._mapping) for row in last_result.fetchall()]
                 else:
-                    # DDL/DML 语句（CREATE, INSERT, UPDATE, DELETE 等）
                     columns = []
                     rows = []
-                    # 提交事务（对于非查询语句）
-                    connection.commit()
             
             duration_ms = int((time.time() - start_time) * 1000)
             
             # 根据是否有返回结果生成不同的消息
             if columns:
                 message = f"SQL执行成功，返回 {len(rows)} 行数据"
+                if total_affected > 0:
+                    message += f"，影响 {total_affected} 行"
             else:
-                message = "SQL执行成功"
+                message = f"SQL执行成功，影响 {total_affected} 行"
             
             return {
                 "success": True,
@@ -494,7 +548,9 @@ def test_code_without_save(
                     "message": message,
                     "columns": columns,
                     "rows": rows,
-                    "row_count": len(rows)
+                    "row_count": len(rows),
+                    "affected_rows": total_affected,
+                    "statements_executed": len(statements)
                 }
             }
             

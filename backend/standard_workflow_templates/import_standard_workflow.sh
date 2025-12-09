@@ -115,6 +115,7 @@ print_info "解析命令行参数..."
 VERSION_ID=""
 WORKFLOW_NAME="标准计算流程"
 HOSPITAL_ID=""
+DATA_SOURCE_ID=""
 
 # 解析参数
 while [[ $# -gt 0 ]]; do
@@ -131,6 +132,10 @@ while [[ $# -gt 0 ]]; do
             HOSPITAL_ID="$2"
             shift 2
             ;;
+        --data-source-id)
+            DATA_SOURCE_ID="$2"
+            shift 2
+            ;;
         --help)
             echo "使用方法: bash import_standard_workflow.sh [选项]"
             echo ""
@@ -140,12 +145,14 @@ while [[ $# -gt 0 ]]; do
             echo "可选参数:"
             echo "  --workflow-name <名称>   流程名称 (默认: 标准计算流程)"
             echo "  --hospital-id <ID>       医疗机构ID (如果不指定,将从版本中自动获取)"
+            echo "  --data-source-id <ID>    数据源ID (如果指定,所有步骤将使用此数据源)"
             echo "  --help                   显示此帮助信息"
             echo ""
             echo "示例:"
             echo "  bash import_standard_workflow.sh --version-id 123"
+            echo "  bash import_standard_workflow.sh --version-id 123 --data-source-id 1"
             echo "  bash import_standard_workflow.sh --version-id 123 --workflow-name '标准计算流程-2025'"
-            echo "  bash import_standard_workflow.sh --version-id 123 --hospital-id 1"
+            echo "  bash import_standard_workflow.sh --version-id 123 --hospital-id 1 --data-source-id 1"
             exit 0
             ;;
         *)
@@ -168,6 +175,9 @@ print_info "  版本ID: $VERSION_ID"
 print_info "  流程名称: $WORKFLOW_NAME"
 if [ -n "$HOSPITAL_ID" ]; then
     print_info "  医疗机构ID: $HOSPITAL_ID"
+fi
+if [ -n "$DATA_SOURCE_ID" ]; then
+    print_info "  数据源ID: $DATA_SOURCE_ID"
 fi
 
 
@@ -232,16 +242,52 @@ print_info "  医疗机构ID: $HOSPITAL_ID"
 
 
 # ============================================================================
+# 第4.5步: 验证数据源ID（如果指定）
+# ============================================================================
+if [ -n "$DATA_SOURCE_ID" ]; then
+    print_info "验证数据源ID: $DATA_SOURCE_ID..."
+    
+    # 查询数据源信息
+    DATA_SOURCE_INFO=$(psql -h "$DATABASE_HOST" -p "$DATABASE_PORT" -U "$DATABASE_USER" -d "$DATABASE_NAME" -t -c \
+        "SELECT name, db_type, is_enabled FROM data_sources WHERE id = $DATA_SOURCE_ID;")
+    
+    if [ -z "$DATA_SOURCE_INFO" ]; then
+        print_error "数据源不存在: ID=$DATA_SOURCE_ID"
+        print_error "请在前端'数据源管理'页面查看可用的数据源ID"
+        exit 1
+    fi
+    
+    # 解析数据源信息
+    DATA_SOURCE_NAME=$(echo $DATA_SOURCE_INFO | awk '{print $1}')
+    DATA_SOURCE_TYPE=$(echo $DATA_SOURCE_INFO | awk '{print $2}')
+    DATA_SOURCE_ENABLED=$(echo $DATA_SOURCE_INFO | awk '{print $3}')
+    
+    print_success "数据源验证通过:"
+    print_info "  数据源名称: $DATA_SOURCE_NAME"
+    print_info "  数据源类型: $DATA_SOURCE_TYPE"
+    print_info "  是否启用: $DATA_SOURCE_ENABLED"
+    
+    # 检查数据源是否启用
+    if [ "$DATA_SOURCE_ENABLED" != "t" ]; then
+        print_warning "数据源未启用，可能无法正常使用"
+    fi
+fi
+
+
+# ============================================================================
 # 第5步: 读取SQL代码文件
 # ============================================================================
 print_info "读取SQL代码文件..."
 
-STEP1_FILE="step1_dimension_catalog.sql"
-STEP2_FILE="step2_indicator_calculation.sql"
-STEP3_FILE="step3_value_aggregation.sql"
+STEP1_FILE="step1_data_preparation.sql"
+STEP2_FILE="step2_dimension_catalog.sql"
+STEP3A_FILE="step3a_orientation_adjustment.sql"
+STEP3B_FILE="step3b_indicator_calculation.sql"
+STEP3C_FILE="step3c_workload_dimensions.sql"
+STEP5_FILE="step5_value_aggregation.sql"
 
 # 检查文件是否存在
-for file in "$STEP1_FILE" "$STEP2_FILE" "$STEP3_FILE"; do
+for file in "$STEP1_FILE" "$STEP2_FILE" "$STEP3A_FILE" "$STEP3B_FILE" "$STEP3C_FILE" "$STEP5_FILE"; do
     if [ ! -f "$file" ]; then
         print_error "SQL文件不存在: $file"
         exit 1
@@ -251,9 +297,12 @@ done
 # 读取文件内容(转义单引号)
 STEP1_SQL=$(cat "$STEP1_FILE" | sed "s/'/''/g")
 STEP2_SQL=$(cat "$STEP2_FILE" | sed "s/'/''/g")
-STEP3_SQL=$(cat "$STEP3_FILE" | sed "s/'/''/g")
+STEP3A_SQL=$(cat "$STEP3A_FILE" | sed "s/'/''/g")
+STEP3B_SQL=$(cat "$STEP3B_FILE" | sed "s/'/''/g")
+STEP3C_SQL=$(cat "$STEP3C_FILE" | sed "s/'/''/g")
+STEP5_SQL=$(cat "$STEP5_FILE" | sed "s/'/''/g")
 
-print_success "成功读取3个SQL文件"
+print_success "成功读取6个SQL文件"
 
 
 # ============================================================================
@@ -283,26 +332,56 @@ print_success "计算流程创建成功, ID: $WORKFLOW_ID"
 # ============================================================================
 print_info "创建计算步骤记录..."
 
-# 步骤1: 维度目录统计
+# 构建data_source_id字段（如果指定）
+if [ -n "$DATA_SOURCE_ID" ]; then
+    DATA_SOURCE_FIELD="data_source_id,"
+    DATA_SOURCE_VALUE="$DATA_SOURCE_ID,"
+else
+    DATA_SOURCE_FIELD=""
+    DATA_SOURCE_VALUE=""
+fi
+
+# 步骤1: 数据准备
 psql -h "$DATABASE_HOST" -p "$DATABASE_PORT" -U "$DATABASE_USER" -d "$DATABASE_NAME" -c \
-    "INSERT INTO calculation_steps (workflow_id, name, description, code_type, code_content, sort_order, is_enabled, created_at, updated_at) 
-     VALUES ($WORKFLOW_ID, '维度目录统计', '根据维度-收费项目映射统计各维度的工作量', 'sql', '$STEP1_SQL', 1.00, TRUE, NOW(), NOW());" > /dev/null
+    "INSERT INTO calculation_steps (workflow_id, name, description, code_type, code_content, ${DATA_SOURCE_FIELD} sort_order, is_enabled, created_at, updated_at) 
+     VALUES ($WORKFLOW_ID, '数据准备', '从门诊和住院收费明细表生成统一的收费明细数据', 'sql', '$STEP1_SQL', ${DATA_SOURCE_VALUE} 1.00, TRUE, NOW(), NOW());" > /dev/null
 
-print_success "步骤1创建成功: 维度目录统计"
+print_success "步骤1创建成功: 数据准备"
 
-# 步骤2: 指标计算
+# 步骤2: 维度目录统计
 psql -h "$DATABASE_HOST" -p "$DATABASE_PORT" -U "$DATABASE_USER" -d "$DATABASE_NAME" -c \
-    "INSERT INTO calculation_steps (workflow_id, name, description, code_type, code_content, sort_order, is_enabled, created_at, updated_at) 
-     VALUES ($WORKFLOW_ID, '指标计算-护理床日数', '从工作量统计表中提取护理床日数', 'sql', '$STEP2_SQL', 2.00, TRUE, NOW(), NOW());" > /dev/null
+    "INSERT INTO calculation_steps (workflow_id, name, description, code_type, code_content, ${DATA_SOURCE_FIELD} sort_order, is_enabled, created_at, updated_at) 
+     VALUES ($WORKFLOW_ID, '维度目录统计', '根据维度-收费项目映射统计各维度的工作量', 'sql', '$STEP2_SQL', ${DATA_SOURCE_VALUE} 2.00, TRUE, NOW(), NOW());" > /dev/null
 
-print_success "步骤2创建成功: 指标计算-护理床日数"
+print_success "步骤2创建成功: 维度目录统计"
 
-# 步骤3: 业务价值汇总
+# 步骤3a: 业务导向调整
 psql -h "$DATABASE_HOST" -p "$DATABASE_PORT" -U "$DATABASE_USER" -d "$DATABASE_NAME" -c \
-    "INSERT INTO calculation_steps (workflow_id, name, description, code_type, code_content, sort_order, is_enabled, created_at, updated_at) 
-     VALUES ($WORKFLOW_ID, '业务价值汇总', '根据模型结构和权重汇总各科室的业务价值', 'sql', '$STEP3_SQL', 3.00, TRUE, NOW(), NOW());" > /dev/null
+    "INSERT INTO calculation_steps (workflow_id, name, description, code_type, code_content, ${DATA_SOURCE_FIELD} sort_order, is_enabled, created_at, updated_at) 
+     VALUES ($WORKFLOW_ID, '业务导向调整', '根据业务导向规则调整维度的学科业务价值', 'sql', '$STEP3A_SQL', ${DATA_SOURCE_VALUE} 3.00, TRUE, NOW(), NOW());" > /dev/null
 
-print_success "步骤3创建成功: 业务价值汇总"
+print_success "步骤3a创建成功: 业务导向调整"
+
+# 步骤3b: 指标计算-护理床日数
+psql -h "$DATABASE_HOST" -p "$DATABASE_PORT" -U "$DATABASE_USER" -d "$DATABASE_NAME" -c \
+    "INSERT INTO calculation_steps (workflow_id, name, description, code_type, code_content, ${DATA_SOURCE_FIELD} sort_order, is_enabled, created_at, updated_at) 
+     VALUES ($WORKFLOW_ID, '指标计算-护理床日数', '从工作量统计表中提取护理床日数', 'sql', '$STEP3B_SQL', ${DATA_SOURCE_VALUE} 3.50, TRUE, NOW(), NOW());" > /dev/null
+
+print_success "步骤3b创建成功: 指标计算-护理床日数"
+
+# 步骤3c: 工作量维度统计
+psql -h "$DATABASE_HOST" -p "$DATABASE_PORT" -U "$DATABASE_USER" -d "$DATABASE_NAME" -c \
+    "INSERT INTO calculation_steps (workflow_id, name, description, code_type, code_content, ${DATA_SOURCE_FIELD} sort_order, is_enabled, created_at, updated_at) 
+     VALUES ($WORKFLOW_ID, '工作量维度统计', '从工作量统计表中提取护理床日、出入转院、手术管理、手术室护理等维度的工作量', 'sql', '$STEP3C_SQL', ${DATA_SOURCE_VALUE} 3.60, TRUE, NOW(), NOW());" > /dev/null
+
+print_success "步骤3c创建成功: 工作量维度统计"
+
+# 步骤5: 业务价值汇总
+psql -h "$DATABASE_HOST" -p "$DATABASE_PORT" -U "$DATABASE_USER" -d "$DATABASE_NAME" -c \
+    "INSERT INTO calculation_steps (workflow_id, name, description, code_type, code_content, ${DATA_SOURCE_FIELD} sort_order, is_enabled, created_at, updated_at) 
+     VALUES ($WORKFLOW_ID, '业务价值汇总', '根据模型结构和权重汇总各科室的业务价值', 'sql', '$STEP5_SQL', ${DATA_SOURCE_VALUE} 5.00, TRUE, NOW(), NOW());" > /dev/null
+
+print_success "步骤5创建成功: 业务价值汇总"
 
 
 # ============================================================================
@@ -317,12 +396,27 @@ print_info "流程信息:"
 echo "  流程ID: $WORKFLOW_ID"
 echo "  流程名称: $WORKFLOW_NAME"
 echo "  模型版本ID: $VERSION_ID"
-echo "  步骤数量: 3"
+echo "  步骤数量: 6"
+if [ -n "$DATA_SOURCE_ID" ]; then
+    echo "  数据源ID: $DATA_SOURCE_ID ($DATA_SOURCE_NAME)"
+fi
 echo ""
 print_info "步骤详情:"
-echo "  1. 维度目录统计 (SQL, 排序: 1.00)"
-echo "  2. 指标计算-护理床日数 (SQL, 排序: 2.00)"
-echo "  3. 业务价值汇总 (SQL, 排序: 3.00)"
+if [ -n "$DATA_SOURCE_ID" ]; then
+    echo "  1. 数据准备 (SQL, 数据源: $DATA_SOURCE_ID, 排序: 1.00)"
+    echo "  2. 维度目录统计 (SQL, 数据源: $DATA_SOURCE_ID, 排序: 2.00)"
+    echo "  3a. 业务导向调整 (SQL, 数据源: $DATA_SOURCE_ID, 排序: 3.00)"
+    echo "  3b. 指标计算-护理床日数 (SQL, 数据源: $DATA_SOURCE_ID, 排序: 3.50)"
+    echo "  3c. 工作量维度统计 (SQL, 数据源: $DATA_SOURCE_ID, 排序: 3.60)"
+    echo "  5. 业务价值汇总 (SQL, 数据源: $DATA_SOURCE_ID, 排序: 5.00)"
+else
+    echo "  1. 数据准备 (SQL, 排序: 1.00) - 需手动设置数据源"
+    echo "  2. 维度目录统计 (SQL, 排序: 2.00) - 需手动设置数据源"
+    echo "  3a. 业务导向调整 (SQL, 排序: 3.00) - 需手动设置数据源"
+    echo "  3b. 指标计算-护理床日数 (SQL, 排序: 3.50) - 需手动设置数据源"
+    echo "  3c. 工作量维度统计 (SQL, 排序: 3.60) - 需手动设置数据源"
+    echo "  5. 业务价值汇总 (SQL, 排序: 5.00) - 需手动设置数据源"
+fi
 echo ""
 print_info "前端访问:"
 echo "  http://localhost/calculation-workflows/$WORKFLOW_ID"

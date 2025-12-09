@@ -2,6 +2,11 @@
 # ============================================
 # 医院科室业务价值评估工具 - 离线部署包构建脚本
 # 适用于: Windows 11 WSL2 + Docker Desktop
+# 
+# 重要提示:
+# 1. 确保所有代码更改已提交
+# 2. 确保 backend/alembic/versions/ 包含所有迁移文件
+# 3. 构建的 Docker 镜像将包含当前代码和迁移文件
 # ============================================
 
 set -e
@@ -9,6 +14,61 @@ set -e
 echo "=========================================="
 echo "  离线部署包构建工具"
 echo "=========================================="
+echo ""
+
+# 检查迁移文件
+echo ">>> 检查迁移文件..."
+MIGRATION_COUNT=$(ls -1 backend/alembic/versions/*.py 2>/dev/null | wc -l)
+if [ $MIGRATION_COUNT -eq 0 ]; then
+    echo "⚠ 警告: 未找到迁移文件"
+    echo "  请确保 backend/alembic/versions/ 目录包含迁移文件"
+else
+    echo "✓ 找到 $MIGRATION_COUNT 个迁移文件"
+fi
+
+# 检查迁移文件链的完整性
+echo ">>> 检查迁移文件链..."
+cd backend
+HEADS_COUNT=$(python -c "
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+try:
+    cfg = Config('alembic.ini')
+    script = ScriptDirectory.from_config(cfg)
+    heads = script.get_revisions('heads')
+    print(len(heads))
+except Exception as e:
+    print('ERROR')
+" 2>/dev/null)
+cd ..
+
+if [ "$HEADS_COUNT" = "1" ]; then
+    echo "✓ 迁移文件链正常（1 head）"
+elif [ "$HEADS_COUNT" = "ERROR" ]; then
+    echo "⚠ 警告: 无法检查迁移文件链"
+    echo "  请确保 Python 环境已安装 alembic"
+else
+    echo "⚠ 警告: 检测到 $HEADS_COUNT 个迁移分支（heads）"
+    echo ""
+    echo "这不会影响离线部署！"
+    echo "init-database.sh 脚本会自动处理多个 heads："
+    echo "  1. 自动尝试升级所有分支"
+    echo "  2. 如果失败，自动创建合并迁移"
+    echo "  3. 无需任何手动干预"
+    echo ""
+    echo "但为了更干净的迁移历史，建议现在修复："
+    echo "  1. cd backend"
+    echo "  2. alembic heads  # 查看所有 heads"
+    echo "  3. alembic merge -m 'merge branches' head1 head2  # 合并分支"
+    echo ""
+    read -p "是否继续打包? (y/n，默认 y): " CONTINUE
+    CONTINUE=${CONTINUE:-y}
+    if [[ ! "$CONTINUE" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+        echo "取消打包"
+        exit 1
+    fi
+    echo ">>> 继续打包（部署时会自动修复）..."
+fi
 echo ""
 
 # 检查Docker是否运行
@@ -32,6 +92,13 @@ DATABASE_DIR="$PACKAGE_DIR/database"
 CONFIG_DIR="$PACKAGE_DIR/config"
 SCRIPTS_DIR="$PACKAGE_DIR/scripts"
 DOCS_DIR="$PACKAGE_DIR/docs"
+
+echo ">>> 清理旧的打包目录..."
+if [ -d "$PACKAGE_DIR" ]; then
+    echo "  发现旧的 $PACKAGE_DIR 目录，清理中..."
+    rm -rf "$PACKAGE_DIR"
+    echo "  ✓ 旧目录已清理"
+fi
 
 echo ">>> 创建目录结构..."
 mkdir -p "$IMAGES_DIR"
@@ -139,38 +206,190 @@ echo ""
 
 # 步骤3: 导出数据库数据
 echo "=========================================="
-echo "  步骤 3/5: 导出数据库数据"
+echo "  步骤 3/5: 导出数据库（使用 pg_dump）"
 echo "=========================================="
 
 # 检查是否有.env文件
 if [ -f "backend/.env" ]; then
-    echo ">>> 使用Docker容器导出数据库..."
+    echo ">>> 使用 pg_dump 导出完整数据库..."
+    echo ""
     
-    # 启动临时容器来导出数据
-    echo ">>> 启动临时后端容器..."
-    docker run --rm \
-        --network host \
-        -v "$(pwd)/backend:/app" \
-        -w /app \
-        --env-file backend/.env \
-        hospital-backend:latest \
-        python export_database.py
+    # 读取数据库连接信息（只读取未注释的行）
+    DATABASE_URL=$(grep -v '^\s*#' backend/.env | grep 'DATABASE_URL=' | tail -1 | cut -d'=' -f2-)
     
-    # 检查导出是否成功
-    if [ -f "backend/database_export.json" ]; then
-        # 移动导出文件到database目录
-        mv backend/database_export.json "$DATABASE_DIR/"
-        
-        # 压缩JSON文件
-        echo ">>> 压缩数据文件..."
-        gzip "$DATABASE_DIR/database_export.json"
-        
-        DB_SIZE=$(du -h "$DATABASE_DIR/database_export.json.gz" | cut -f1)
-        echo "✓ 数据库导出完成 ($DB_SIZE)"
+    # 提取数据库连接信息
+    if [[ $DATABASE_URL =~ postgresql://([^:]+):([^@]+)@([^:]+):([0-9]+)/(.+) ]]; then
+        DB_USER="${BASH_REMATCH[1]}"
+        DB_PASSWORD="${BASH_REMATCH[2]}"
+        DB_HOST="${BASH_REMATCH[3]}"
+        DB_PORT="${BASH_REMATCH[4]}"
+        DB_NAME="${BASH_REMATCH[5]}"
     else
-        echo "⚠ 数据库导出失败"
-        echo "  如需导出数据，可以手动运行:"
-        echo "  docker run --rm --network host -v \$(pwd)/backend:/app -w /app --env-file backend/.env hospital-backend:latest python export_database.py"
+        echo "✗ 无法解析DATABASE_URL"
+        echo "  跳过数据库导出"
+        echo ""
+        DB_USER=""
+    fi
+    
+    if [ -n "$DB_USER" ]; then
+        # 处理 host.docker.internal
+        if [ "$DB_HOST" = "host.docker.internal" ]; then
+            DB_HOST="localhost"
+        fi
+        
+        echo "数据库主机: $DB_HOST"
+        echo "数据库端口: $DB_PORT"
+        echo "数据库名称: $DB_NAME"
+        echo ""
+        
+        # 检查 pg_dump 是否可用
+        if command -v pg_dump &> /dev/null; then
+            echo ">>> 使用本地 pg_dump 分离导出（结构 + 部分数据）..."
+            echo ""
+            
+            # 从配置文件读取排除列表
+            EXCLUDE_FILE=".offline-package-exclude-tables.txt"
+            if [ ! -f "$EXCLUDE_FILE" ]; then
+                echo "✗ 未找到排除列表文件: $EXCLUDE_FILE"
+                echo "  请创建该文件并列出要排除的表名（每行一个）"
+                exit 1
+            fi
+            
+            # 读取并过滤排除列表（忽略空行和注释）
+            TABLES_SCHEMA_ONLY=()
+            while IFS= read -r line; do
+                # 跳过注释和空行
+                if [[ ! "$line" =~ ^[[:space:]]*# ]] && [[ -n "${line// }" ]]; then
+                    # 去除前后空格
+                    table=$(echo "$line" | xargs)
+                    TABLES_SCHEMA_ONLY+=("$table")
+                fi
+            done < "$EXCLUDE_FILE"
+            
+            if [ ${#TABLES_SCHEMA_ONLY[@]} -eq 0 ]; then
+                echo "⚠ 排除列表为空，将导出所有表的数据"
+            fi
+            
+            echo "导出策略:"
+            echo "  - 排除列表文件: $EXCLUDE_FILE"
+            echo "  - 大数据表（仅结构）: ${#TABLES_SCHEMA_ONLY[@]} 个"
+            echo "  - 其他所有表（含数据）: 自动包含"
+            echo ""
+            
+            if [ ${#TABLES_SCHEMA_ONLY[@]} -gt 0 ]; then
+                echo "排除数据的表:"
+                for table in "${TABLES_SCHEMA_ONLY[@]}"; do
+                    echo "  - $table"
+                done
+                echo ""
+            fi
+            
+            # 1. 导出完整的表结构（所有表）
+            echo ">>> 步骤 1/3: 导出完整表结构..."
+            PGPASSWORD=$DB_PASSWORD pg_dump \
+                -h $DB_HOST \
+                -p $DB_PORT \
+                -U $DB_USER \
+                -d $DB_NAME \
+                -f "$DATABASE_DIR/schema.sql" \
+                --schema-only \
+                --no-owner \
+                --no-acl
+            
+            if [ $? -ne 0 ]; then
+                echo "✗ 表结构导出失败"
+                rm -f "$DATABASE_DIR/schema.sql"
+                exit 1
+            fi
+            echo "✓ 表结构导出完成"
+            
+            # 2. 导出所有表的数据（使用排除列表）
+            echo ">>> 步骤 2/3: 导出数据（排除大数据表）..."
+            EXCLUDE_ARGS=""
+            for table in "${TABLES_SCHEMA_ONLY[@]}"; do
+                EXCLUDE_ARGS="$EXCLUDE_ARGS --exclude-table-data=$table"
+            done
+            
+            PGPASSWORD=$DB_PASSWORD pg_dump \
+                -h $DB_HOST \
+                -p $DB_PORT \
+                -U $DB_USER \
+                -d $DB_NAME \
+                -f "$DATABASE_DIR/data.sql" \
+                --data-only \
+                --no-owner \
+                --no-acl \
+                $EXCLUDE_ARGS
+            
+            if [ $? -ne 0 ]; then
+                echo "✗ 数据导出失败"
+                rm -f "$DATABASE_DIR/data.sql"
+                exit 1
+            fi
+            echo "✓ 数据导出完成"
+            
+            # 3. 合并文件
+            echo ">>> 步骤 3/3: 合并 SQL 文件..."
+            cat "$DATABASE_DIR/schema.sql" "$DATABASE_DIR/data.sql" > "$DATABASE_DIR/database.sql"
+            rm -f "$DATABASE_DIR/schema.sql" "$DATABASE_DIR/data.sql"
+            echo "✓ SQL 文件合并完成"
+            
+            # 4. 压缩
+            echo ">>> 压缩 SQL 文件..."
+            gzip -9 "$DATABASE_DIR/database.sql"
+            
+            DB_SIZE=$(du -h "$DATABASE_DIR/database.sql.gz" | cut -f1)
+            PG_VERSION=$(pg_dump --version | grep -oP '\d+\.\d+' | head -1)
+            
+            echo ""
+            echo "✓ 数据库导出完成 ($DB_SIZE)"
+            echo ""
+            echo "导出内容:"
+            echo "  - PostgreSQL 版本: $PG_VERSION"
+            echo "  - 所有表结构（含索引、约束）"
+            echo "  - 所有表数据（排除 ${#TABLES_SCHEMA_ONLY[@]} 个大数据表）"
+            echo ""
+            echo "排除数据的表（仅结构）:"
+            for table in "${TABLES_SCHEMA_ONLY[@]}"; do
+                echo "  - $table"
+            done
+            echo ""
+            echo "注意: 部署后需要导入业务数据到上述表"
+        else
+            echo "⚠ 本地未安装 pg_dump"
+            echo "  尝试使用 Docker 中的 PostgreSQL 客户端..."
+            
+            # 使用 PostgreSQL Docker 镜像导出
+            if docker image inspect postgres:16 &> /dev/null || docker pull postgres:16; then
+                docker run --rm \
+                    --network host \
+                    -v "$(pwd)/$DATABASE_DIR:/backup" \
+                    -e PGPASSWORD=$DB_PASSWORD \
+                    postgres:16 \
+                    pg_dump \
+                        -h $DB_HOST \
+                        -p $DB_PORT \
+                        -U $DB_USER \
+                        -d $DB_NAME \
+                        -f /backup/database.sql \
+                        --verbose \
+                        --no-owner \
+                        --no-acl
+                
+                if [ $? -eq 0 ]; then
+                    echo ">>> 压缩 SQL 文件..."
+                    gzip -9 "$DATABASE_DIR/database.sql"
+                    DB_SIZE=$(du -h "$DATABASE_DIR/database.sql.gz" | cut -f1)
+                    echo "✓ 数据库导出完成 ($DB_SIZE)"
+                else
+                    echo "✗ 数据库导出失败"
+                    rm -f "$DATABASE_DIR/database.sql"*
+                fi
+            else
+                echo "✗ 无法获取 PostgreSQL Docker 镜像"
+                echo "  跳过数据库导出"
+            fi
+        fi
     fi
 else
     echo "⚠ 未找到backend/.env文件，跳过数据库导出"
@@ -238,10 +457,18 @@ cat > "$PACKAGE_DIR/README.md" << EOF
 ## 部署包内容
 
 - images/ - Docker镜像文件（约500MB）
-- database/ - 数据库数据文件
+- database/ - 数据库完整备份（.dump 格式）
 - config/ - 配置文件
 - scripts/ - 部署脚本
 - docs/ - 部署文档
+
+## 数据库恢复方式
+
+本部署包使用 PostgreSQL 原生的 pg_dump/pg_restore 方式：
+- ✅ 简单可靠：一条命令完整恢复
+- ✅ 包含所有内容：表结构、数据、索引、约束、序列
+- ✅ 无需迁移：不依赖 Alembic 迁移文件
+- ✅ 快速高效：比逐表导入快得多
 
 ## 快速开始
 

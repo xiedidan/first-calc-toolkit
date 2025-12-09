@@ -17,7 +17,7 @@
         </el-table-column>
         <el-table-column label="计算流程" width="200">
           <template #default="{ row }">
-            {{ getWorkflowName(row.workflow_id) }}
+            {{ row.workflow_name || '-' }}
           </template>
         </el-table-column>
         <el-table-column label="状态" width="120">
@@ -69,7 +69,7 @@
     </el-card>
 
     <!-- 执行日志对话框 -->
-    <el-dialog v-model="logsDialogVisible" title="执行日志" width="900px" custom-class="full-height-dialog">
+    <el-dialog v-model="logsDialogVisible" title="执行日志" width="900px" append-to-body>
       <div v-loading="logsLoading">
         <el-descriptions :column="2" border style="margin-bottom: 20px">
           <el-descriptions-item label="任务ID">{{ currentTask?.task_id }}</el-descriptions-item>
@@ -192,7 +192,7 @@
     </el-dialog>
 
     <!-- 日志详情对话框 -->
-    <el-dialog v-model="logDetailVisible" title="步骤执行详情" width="800px" custom-class="full-height-dialog">
+    <el-dialog v-model="logDetailVisible" title="步骤执行详情" width="800px" append-to-body>
       <el-descriptions :column="1" border v-if="currentLog">
         <el-descriptions-item label="步骤名称">
           {{ getStepName(currentLog.step_id) }}
@@ -229,7 +229,7 @@
     </el-dialog>
 
     <!-- 创建任务对话框 -->
-    <el-dialog v-model="createDialogVisible" title="创建计算任务" width="600px" custom-class="full-height-dialog">
+    <el-dialog v-model="createDialogVisible" title="创建计算任务" width="600px" append-to-body>
       <el-form :model="taskForm" :rules="taskRules" ref="taskFormRef" label-width="120px">
         <el-form-item label="模型版本" prop="model_version_id">
           <el-select v-model="taskForm.model_version_id" placeholder="请选择模型版本" @change="onVersionChange">
@@ -475,7 +475,8 @@ const viewResults = (task: any) => {
     name: 'Results',
     query: {
       task_id: task.task_id,
-      period: task.period
+      period: task.period,
+      model_version_id: task.model_version_id
     }
   })
 }

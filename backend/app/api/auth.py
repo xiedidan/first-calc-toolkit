@@ -63,9 +63,11 @@ async def get_current_user_info(
     """
     Get current user information
     """
-    # 简化角色判断：有admin角色就是管理员，否则是普通用户
-    role = "admin" if any(r.code == "admin" for r in current_user.roles) else "user"
+    from app.models.role import RoleType
+    
+    role = current_user.roles[0] if current_user.roles else None
     hospital_name = current_user.hospital.name if current_user.hospital else None
+    department_name = current_user.department.his_name if current_user.department else None
     
     return UserSchema(
         id=current_user.id,
@@ -74,8 +76,13 @@ async def get_current_user_info(
         email=current_user.email,
         status=current_user.status,
         hospital_id=current_user.hospital_id,
+        department_id=current_user.department_id,
         hospital_name=hospital_name,
+        department_name=department_name,
         created_at=current_user.created_at,
         updated_at=current_user.updated_at,
-        role=role
+        role_id=role.id if role else 0,
+        role_name=role.name if role else "",
+        role_type=role.role_type if role else RoleType.HOSPITAL_USER,
+        menu_permissions=role.menu_permissions if role else None
     )

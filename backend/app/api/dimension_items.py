@@ -36,7 +36,8 @@ def get_dimension_items(
     dimension_code: Optional[str] = Query(None, description="维度节点编码（单个）"),
     dimension_codes: Optional[str] = Query(None, description="维度节点编码列表（逗号分隔）"),
     keyword: Optional[str] = Query(None, description="搜索关键词"),
-    orphans_only: bool = Query(False, description="仅显示孤儿记录"),
+    orphans_only: bool = Query(False, description="仅显示无效记录（收费编码不在收费项目表中）"),
+    no_dimension_only: bool = Query(False, description="仅显示无维度项目（维度记录不存在或找不到）"),
     page: int = Query(1, ge=1, description="页码"),
     size: int = Query(10, ge=1, le=10000, description="每页数量"),
     db: Session = Depends(deps.get_db),
@@ -89,9 +90,19 @@ def get_dimension_items(
         # 单个维度编码（向后兼容）
         query = query.filter(DimensionItemMapping.dimension_code == dimension_code)
     
-    # 如果只显示孤儿记录
+    # 如果只显示无效记录（收费编码不在收费项目表中）
     if orphans_only:
         query = query.filter(ChargeItem.item_code.is_(None))
+    
+    # 如果只显示无维度项目（维度记录不存在或找不到）
+    if no_dimension_only:
+        query = query.filter(
+            or_(
+                DimensionItemMapping.dimension_code.is_(None),
+                DimensionItemMapping.dimension_code == '',
+                ModelNode.id.is_(None)  # 维度code存在但找不到对应的ModelNode记录
+            )
+        )
     
     # 关键词搜索 - 修复：支持搜索item_code，即使ChargeItem不存在
     # 使用coalesce处理NULL值，或者分别检查每个字段
@@ -319,7 +330,7 @@ def clear_all_orphan_items(
     db: Session = Depends(deps.get_db),
     current_user = Depends(deps.get_current_user),
 ):
-    """清除所有孤儿记录（收费编码不在收费项目表中的记录）"""
+    """清除所有无效记录（收费编码不在收费项目表中的记录）"""
     # 获取当前医疗机构ID
     hospital_id = get_current_hospital_id_or_raise()
     
@@ -339,7 +350,7 @@ def clear_all_orphan_items(
     
     if not orphan_ids:
         return {
-            "message": "没有找到孤儿记录",
+            "message": "没有找到无效记录",
             "deleted_count": 0
         }
     
@@ -351,7 +362,62 @@ def clear_all_orphan_items(
     db.commit()
     
     return {
-        "message": f"已清除所有孤儿记录",
+        "message": f"已清除所有无效记录",
+        "deleted_count": deleted_count
+    }
+
+
+@router.delete("/no-dimension/clear-all")
+def clear_all_no_dimension_items(
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user),
+):
+    """清除所有无维度项目（维度记录不存在或找不到的记录）"""
+    from app.models.model_node import ModelNode
+    from app.models.model_version import ModelVersion
+    
+    # 获取当前医疗机构ID
+    hospital_id = get_current_hospital_id_or_raise()
+    
+    # 获取当前激活的模型版本ID
+    active_version = db.query(ModelVersion).filter(
+        ModelVersion.hospital_id == hospital_id,
+        ModelVersion.is_active == True
+    ).first()
+    
+    # 查询当前医疗机构的所有无维度项目的ID
+    no_dimension_ids = db.query(DimensionItemMapping.id).outerjoin(
+        ModelNode,
+        and_(
+            DimensionItemMapping.dimension_code == ModelNode.code,
+            ModelNode.version_id == active_version.id if active_version else None
+        )
+    ).filter(
+        DimensionItemMapping.hospital_id == hospital_id,
+        or_(
+            DimensionItemMapping.dimension_code.is_(None),
+            DimensionItemMapping.dimension_code == '',
+            ModelNode.id.is_(None)
+        )
+    ).all()
+    
+    no_dimension_ids = [id[0] for id in no_dimension_ids]
+    
+    if not no_dimension_ids:
+        return {
+            "message": "没有找到无维度项目",
+            "deleted_count": 0
+        }
+    
+    # 删除这些记录
+    deleted_count = db.query(DimensionItemMapping).filter(
+        DimensionItemMapping.id.in_(no_dimension_ids)
+    ).delete(synchronize_session=False)
+    
+    db.commit()
+    
+    return {
+        "message": f"已清除所有无维度项目",
         "deleted_count": deleted_count
     }
 
@@ -444,16 +510,41 @@ def smart_import_preview(
     current_user = Depends(deps.get_current_user),
 ):
     """第三步：生成导入预览"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"=== Smart Import Preview Request ===")
+    logger.info(f"Session ID: {request.session_id}")
+    logger.info(f"Value mapping count: {len(request.value_mapping)}")
+    
+    # 获取当前医疗机构ID
+    try:
+        hospital_id = get_current_hospital_id_or_raise()
+        logger.info(f"Hospital ID: {hospital_id}")
+    except Exception as e:
+        logger.error(f"Failed to get hospital ID: {e}")
+        raise
+    
+    # 打印每个映射的详细信息
+    for i, mapping in enumerate(request.value_mapping):
+        logger.info(f"Mapping {i}: value='{mapping.value}', source='{mapping.source}', codes={mapping.dimension_codes}")
+    
     try:
         result = DimensionImportService.generate_preview(
             session_id=request.session_id,
             value_mapping=request.value_mapping,
-            db=db
+            db=db,
+            hospital_id=hospital_id
         )
+        logger.info(f"Preview generated successfully: {len(result['preview_items'])} items")
         return result
     except ValueError as e:
+        logger.error(f"ValueError in generate_preview: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        import traceback
+        logger.error(f"Exception in generate_preview: {e}")
+        logger.error(f"Traceback:\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"生成预览失败: {str(e)}")
 
 
@@ -464,14 +555,35 @@ def smart_import_execute(
     current_user = Depends(deps.get_current_user),
 ):
     """执行导入"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"=== Smart Import Execute Request ===")
+    logger.info(f"Session ID: {request.session_id}")
+    logger.info(f"Confirmed items: {len(request.confirmed_items) if request.confirmed_items else 'None (use all)'}")
+    
+    # 获取当前医疗机构ID
+    try:
+        hospital_id = get_current_hospital_id_or_raise()
+        logger.info(f"Hospital ID: {hospital_id}")
+    except Exception as e:
+        logger.error(f"Failed to get hospital ID: {e}")
+        raise
+    
     try:
         result = DimensionImportService.execute_import(
             session_id=request.session_id,
             confirmed_items=request.confirmed_items,
-            db=db
+            db=db,
+            hospital_id=hospital_id
         )
+        logger.info(f"Import executed successfully: {result['report']['success_count']} items")
         return result
     except ValueError as e:
+        logger.error(f"ValueError in execute_import: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        import traceback
+        logger.error(f"Exception in execute_import: {e}")
+        logger.error(f"Traceback:\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"执行导入失败: {str(e)}")

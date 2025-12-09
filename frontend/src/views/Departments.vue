@@ -52,6 +52,19 @@
         <el-table-column prop="cost_center_name" label="成本中心名称" width="180" sortable="custom" />
         <el-table-column prop="accounting_unit_code" label="核算单元代码" width="150" sortable="custom" />
         <el-table-column prop="accounting_unit_name" label="核算单元名称" width="180" sortable="custom" />
+        <el-table-column label="核算序列" width="180">
+          <template #default="{ row }">
+            <el-tag 
+              v-for="seq in row.accounting_sequences" 
+              :key="seq" 
+              size="small" 
+              style="margin-right: 5px"
+            >
+              {{ seq }}
+            </el-tag>
+            <span v-if="!row.accounting_sequences || row.accounting_sequences.length === 0" style="color: #999">-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="评估状态" width="120">
           <template #default="{ row }">
             <el-tag :type="row.is_active ? 'success' : 'info'">
@@ -93,7 +106,7 @@
       v-model="dialogVisible"
       :title="dialogTitle"
       width="600px"
-      custom-class="full-height-dialog"
+      append-to-body
       @close="handleDialogClose"
     >
       <el-form
@@ -105,7 +118,6 @@
         <el-form-item label="HIS科室代码" prop="his_code">
           <el-input
             v-model="form.his_code"
-            :disabled="isEdit"
             placeholder="请输入HIS科室代码"
           />
         </el-form-item>
@@ -132,6 +144,18 @@
         </el-form-item>
         <el-form-item label="核算单元名称">
           <el-input v-model="form.accounting_unit_name" placeholder="请输入核算单元名称" />
+        </el-form-item>
+        <el-form-item label="核算序列">
+          <el-select 
+            v-model="form.accounting_sequences" 
+            multiple 
+            placeholder="请选择核算序列"
+            style="width: 100%"
+          >
+            <el-option label="医生" value="医生" />
+            <el-option label="护理" value="护理" />
+            <el-option label="医技" value="医技" />
+          </el-select>
         </el-form-item>
         <el-form-item label="是否参与评估" v-if="!isEdit">
           <el-switch v-model="form.is_active" />
@@ -161,6 +185,7 @@ interface Department {
   cost_center_name?: string
   accounting_unit_code?: string
   accounting_unit_name?: string
+  accounting_sequences?: string[]
   is_active: boolean
   created_at: string
   updated_at: string
@@ -197,6 +222,7 @@ const form = reactive({
   cost_center_name: '',
   accounting_unit_code: '',
   accounting_unit_name: '',
+  accounting_sequences: [] as string[],
   is_active: true
 })
 
@@ -318,7 +344,7 @@ const handleSubmit = async () => {
     submitting.value = true
     try {
       if (isEdit.value) {
-        const { his_code, is_active, id, created_at, updated_at, ...updateData } = form
+        const { is_active, id, created_at, updated_at, ...updateData } = form
         await request.put(`/departments/${form.id}`, updateData)
         ElMessage.success('更新成功')
       } else {
@@ -352,6 +378,7 @@ const handleDialogClose = () => {
     cost_center_name: '',
     accounting_unit_code: '',
     accounting_unit_name: '',
+    accounting_sequences: [],
     is_active: true
   })
 }

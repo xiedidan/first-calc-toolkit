@@ -374,7 +374,8 @@ class DimensionImportService:
         cls,
         session_id: str,
         value_mapping: List[Dict[str, Any]],
-        db: Session
+        db: Session,
+        hospital_id: int
     ) -> Dict[str, Any]:
         """
         第三步：生成导入预览
@@ -403,6 +404,13 @@ class DimensionImportService:
         field_mapping = session_data.get("field_mapping")
         if not field_mapping:
             raise ValueError("缺少字段映射信息")
+        
+        # 验证字段映射
+        if not field_mapping.get("item_code"):
+            raise ValueError("必须映射收费编码字段")
+        
+        # 过滤掉空字符串的映射
+        field_mapping = {k: v for k, v in field_mapping.items() if v and v.strip()}
         
         # 构建值到维度的映射字典
         value_to_dims = {}
@@ -436,23 +444,38 @@ class DimensionImportService:
         data_rows = rows[1:]  # 跳过表头
         
         # 获取列索引
-        item_code_col = headers.index(field_mapping["item_code"])
-        dimension_plan_col = headers.index(field_mapping["dimension_plan"]) if "dimension_plan" in field_mapping else -1
-        expert_opinion_col = headers.index(field_mapping["expert_opinion"]) if "expert_opinion" in field_mapping else -1
+        try:
+            item_code_col = headers.index(field_mapping["item_code"])
+        except ValueError as e:
+            raise ValueError(f"字段映射错误：'{field_mapping['item_code']}' 不在表头列表中。可用表头：{headers}")
+        
+        dimension_plan_col = -1
+        if "dimension_plan" in field_mapping and field_mapping["dimension_plan"]:
+            try:
+                dimension_plan_col = headers.index(field_mapping["dimension_plan"])
+            except ValueError:
+                raise ValueError(f"字段映射错误：'{field_mapping['dimension_plan']}' 不在表头列表中。可用表头：{headers}")
+        
+        expert_opinion_col = -1
+        if "expert_opinion" in field_mapping and field_mapping["expert_opinion"]:
+            try:
+                expert_opinion_col = headers.index(field_mapping["expert_opinion"])
+            except ValueError:
+                raise ValueError(f"字段映射错误：'{field_mapping['expert_opinion']}' 不在表头列表中。可用表头：{headers}")
         
         # 获取匹配方式
         match_by = session_data.get("match_by", "code")
         
-        # 获取所有收费项目（用于验证和转换）
-        all_charge_items_by_code = {item.item_code: item for item in db.query(ChargeItem).all()}
-        all_charge_items_by_name = {item.item_name: item for item in db.query(ChargeItem).all()}
+        # 获取所有收费项目（用于验证和转换，限定当前医疗机构）
+        all_charge_items_by_code = {item.item_code: item for item in db.query(ChargeItem).filter(ChargeItem.hospital_id == hospital_id).all()}
+        all_charge_items_by_name = {item.item_name: item for item in db.query(ChargeItem).filter(ChargeItem.hospital_id == hospital_id).all()}
         
         # 获取所有维度（用于验证）
         all_dimensions = {node.code: node for node in db.query(ModelNode).all()}
         
-        # 获取已存在的映射关系
+        # 获取已存在的映射关系（限定当前医疗机构）
         existing_mappings = set()
-        for mapping in db.query(DimensionItemMapping).all():
+        for mapping in db.query(DimensionItemMapping).filter(DimensionItemMapping.hospital_id == hospital_id).all():
             existing_mappings.add((mapping.dimension_code, mapping.item_code))
         
         # 生成预览数据
@@ -521,13 +544,13 @@ class DimensionImportService:
                 dimension = all_dimensions.get(dim_code)
                 if not dimension:
                     preview_items.append({
-                        "item_code": item_code,
-                        "item_name": item_name,
-                        "dimension_code": dim_code,
+                        "item_code": item_code or "",
+                        "item_name": item_name or "",
+                        "dimension_code": dim_code or "",
                         "dimension_name": "",
                         "dimension_path": "",
-                        "source": source_type,
-                        "source_value": source_value,
+                        "source": source_type or "",
+                        "source_value": source_value or "",
                         "status": "error",
                         "message": "目标维度不存在"
                     })
@@ -555,15 +578,15 @@ class DimensionImportService:
                     statistics["ok"] += 1
                 
                 preview_items.append({
-                    "item_code": item_code,
-                    "item_name": item_name,
-                    "dimension_code": dim_code,
-                    "dimension_name": dimension.name,
-                    "dimension_path": dimension_path,
-                    "source": source_type,
-                    "source_value": source_value,
-                    "status": status,
-                    "message": message
+                    "item_code": item_code or "",
+                    "item_name": item_name or "",
+                    "dimension_code": dim_code or "",
+                    "dimension_name": dimension.name or "",
+                    "dimension_path": dimension_path or "",
+                    "source": source_type or "",
+                    "source_value": source_value or "",
+                    "status": status or "",
+                    "message": message or ""
                 })
         
         # 保存到会话
@@ -579,7 +602,8 @@ class DimensionImportService:
         cls,
         session_id: str,
         confirmed_items: Optional[List[Dict[str, Any]]],
-        db: Session
+        db: Session,
+        hospital_id: int
     ) -> Dict[str, Any]:
         """
         执行导入
@@ -600,39 +624,63 @@ class DimensionImportService:
                 }
             }
         """
-        # 获取会话数据
-        session_data = cls._sessions.get(session_id)
-        if not session_data:
-            raise ValueError("会话已过期或不存在")
+        import logging
+        logger = logging.getLogger(__name__)
         
-        preview_items = session_data.get("preview_items")
-        if not preview_items:
-            raise ValueError("缺少预览数据")
-        
-        # 如果用户指定了确认项，则只导入这些项
-        items_to_import = confirmed_items if confirmed_items else preview_items
+        # 如果用户指定了确认项，直接使用（不依赖会话）
+        if confirmed_items:
+            logger.info(f"Using confirmed items from request: {len(confirmed_items)} items")
+            items_to_import = confirmed_items
+        else:
+            # 否则从会话中获取预览数据
+            logger.info(f"Looking for session: {session_id}")
+            logger.info(f"Available sessions: {list(cls._sessions.keys())}")
+            
+            session_data = cls._sessions.get(session_id)
+            if not session_data:
+                raise ValueError(f"会话已过期或不存在。Session ID: {session_id}, 可用会话: {list(cls._sessions.keys())}")
+            
+            preview_items = session_data.get("preview_items")
+            if not preview_items:
+                logger.error(f"Session data keys: {list(session_data.keys())}")
+                raise ValueError("缺少预览数据")
+            
+            items_to_import = preview_items
+            logger.info(f"Using preview items from session: {len(items_to_import)} items")
         
         success_count = 0
         skipped_count = 0
         error_count = 0
         errors = []
         
+        # 辅助函数：统一获取字段值（支持字典和 Pydantic 模型）
+        def get_field(item, field_name, default=None):
+            if hasattr(item, field_name):
+                return getattr(item, field_name, default)
+            elif isinstance(item, dict):
+                return item.get(field_name, default)
+            return default
+        
         for item in items_to_import:
             try:
                 # 跳过错误状态的项
-                if item.get("status") == "error":
+                if get_field(item, "status") == "error":
                     error_count += 1
                     errors.append({
-                        "item_code": item["item_code"],
-                        "dimension_code": item["dimension_code"],
-                        "reason": item.get("message", "未知错误")
+                        "item_code": get_field(item, "item_code", "unknown"),
+                        "dimension_code": get_field(item, "dimension_code", ""),
+                        "reason": get_field(item, "message", "未知错误")
                     })
                     continue
                 
-                # 检查是否已存在映射
+                # 检查是否已存在映射（在当前医疗机构内）
+                item_code = get_field(item, "item_code")
+                dimension_code = get_field(item, "dimension_code")
+                
                 existing = db.query(DimensionItemMapping).filter(
-                    DimensionItemMapping.dimension_code == item["dimension_code"],
-                    DimensionItemMapping.item_code == item["item_code"]
+                    DimensionItemMapping.hospital_id == hospital_id,
+                    DimensionItemMapping.dimension_code == dimension_code,
+                    DimensionItemMapping.item_code == item_code
                 ).first()
                 
                 if existing:
@@ -642,8 +690,9 @@ class DimensionImportService:
                 
                 # 创建新映射（即使收费项目不存在也允许创建）
                 mapping = DimensionItemMapping(
-                    dimension_code=item["dimension_code"],
-                    item_code=item["item_code"]
+                    hospital_id=hospital_id,
+                    dimension_code=dimension_code,
+                    item_code=item_code
                 )
                 db.add(mapping)
                 db.flush()  # 立即执行以检测错误
@@ -653,8 +702,8 @@ class DimensionImportService:
                 db.rollback()  # 回滚当前记录
                 error_count += 1
                 errors.append({
-                    "item_code": item.get("item_code", "unknown"),
-                    "dimension_code": item.get("dimension_code", ""),
+                    "item_code": get_field(item, "item_code", "unknown"),
+                    "dimension_code": get_field(item, "dimension_code", ""),
                     "reason": str(e)
                 })
         
@@ -665,8 +714,8 @@ class DimensionImportService:
             db.rollback()
             raise ValueError(f"提交事务失败: {str(e)}")
         
-        # 清理会话
-        if session_id in cls._sessions:
+        # 清理会话（如果存在）
+        if session_id and session_id in cls._sessions:
             del cls._sessions[session_id]
         
         return {

@@ -8,9 +8,12 @@
 
 | 文件名 | 说明 |
 |--------|------|
-| `step1_dimension_catalog.sql` | 步骤1: 维度目录统计 - 根据维度-收费项目映射统计各维度的工作量 |
-| `step2_indicator_calculation.sql` | 步骤2: 指标计算示例 - 护理床日数统计(包含更多指标示例) |
-| `step3_value_aggregation.sql` | 步骤3: 业务价值汇总 - 根据模型结构和权重汇总各科室的业务价值 |
+| `step1_data_preparation.sql` | 步骤1: 数据准备 - 从门诊和住院收费明细表生成统一的收费明细数据 |
+| `step2_dimension_catalog.sql` | 步骤2: 维度目录统计 - 根据维度-收费项目映射统计各维度的工作量 |
+| `step3a_orientation_adjustment.sql` | 步骤3a: 业务导向调整 - 根据业务导向规则调整维度的学科业务价值 |
+| `step3b_indicator_calculation.sql` | 步骤3b: 指标计算-护理床日数 - 从工作量统计表中提取护理床日数 |
+| `step3c_workload_dimensions.sql` | 步骤3c: 工作量维度统计 - 从工作量统计表中提取护理床日、出入转院、手术管理、手术室护理等维度的工作量 |
+| `step5_value_aggregation.sql` | 步骤5: 业务价值汇总 - 根据模型结构和权重汇总各科室的业务价值 |
 | `import_standard_workflow.sh` | 自动导入脚本 - 一键将SQL代码导入到系统 |
 | `README.md` | 本文档 - 使用说明和常见问题 |
 
@@ -134,42 +137,63 @@ bash import_standard_workflow.sh \
 - `workload_quantity`: 工作量数量
 - `workload_patient_count`: 患者人次
 
-### 步骤2: 指标计算
+### 步骤3b: 指标计算-护理床日数
 
-**功能**: 执行自定义的指标计算逻辑,计算指标型维度的工作量
-
-**示例**: 护理床日数统计
+**功能**: 从工作量统计表中提取护理床日数
 
 **关键逻辑**:
-1. 从`workload_statistics`表提取护理床日数
+1. 从`workload_statistics`表提取护理床日数(stat_type='nursing_days')
 2. 汇总各级护理床日数(一级、二级、三级、特级等)
 3. 按科室输出工作量数值
 
 **占位符**:
+- `{task_id}`: 计算任务ID
 - `{current_year_month}`: 当期年月
 - `{hospital_id}`: 医疗机构ID
-- `{dimension_id}`: 维度ID (需要替换为实际ID)
+- `{version_id}`: 模型版本ID
 
 **输出字段**:
-- `dimension_id`: 维度ID
+- `task_id`: 任务ID
+- `node_id`: 节点ID
 - `department_id`: 科室ID
-- `workload_value`: 工作量数值
+- `workload`: 工作量数值
+- `weight`: 权重
+- `value`: 价值
 
-**扩展指南**:
+### 步骤3c: 工作量维度统计
 
-文件中包含了更多指标计算示例,用户可以复制并修改:
-- 重症监护床日数统计
-- 会诊工作量统计 (发起数 + 参与数)
-- MDT工作量统计 (发起数 + 参加数)
-- 出院人次统计
-- 门急诊留观数统计
+**功能**: 从工作量统计表中提取护理床日、出入转院、手术管理、手术室护理等维度的工作量
 
-**如何创建新的指标计算步骤**:
-1. 复制`step2_indicator_calculation.sql`中的示例SQL
-2. 修改`{dimension_id}`为实际的维度ID
-3. 调整`workload_value`的计算逻辑
-4. 在前端"计算步骤管理"页面添加新步骤
-5. 或修改`import_standard_workflow.sh`脚本,自动导入更多步骤
+**支持的维度类型**:
+- `nursing_bed_days`: 护理床日
+- `admission_discharge_transfer`: 出入转院
+- `surgery_management`: 手术管理
+- `operating_room_nursing`: 手术室护理
+
+**关键逻辑**:
+1. 从`workload_statistics`表读取各类工作量数据
+2. 根据统计类型(stat_type)匹配到对应的维度(通过code)
+3. 按科室汇总工作量
+4. 插入到`calculation_results`表
+
+**占位符**:
+- `{task_id}`: 计算任务ID
+- `{current_year_month}`: 当期年月
+- `{hospital_id}`: 医疗机构ID
+- `{version_id}`: 模型版本ID
+
+**输出字段**:
+- `task_id`: 任务ID
+- `node_id`: 节点ID
+- `department_id`: 科室ID
+- `workload`: 工作量数值
+- `weight`: 权重
+- `value`: 价值
+
+**维度匹配规则**:
+- 通过维度的`code`字段进行模糊匹配
+- 例如: `code LIKE '%nursing_bed_days%'` 或 `code LIKE '%护理床日%'`
+- 如果维度code与stat_type不匹配,需要调整SQL中的匹配条件
 
 ### 步骤3: 业务价值汇总
 

@@ -5,8 +5,9 @@
         <div class="card-header">
           <span>维度目录管理</span>
           <div>
-            <el-button type="danger" plain @click="handleClearAll" v-if="!showingOrphans">全部清除</el-button>
-            <el-button type="danger" @click="handleClearAllOrphans" v-if="showingOrphans">清除所有孤儿记录</el-button>
+            <el-button type="danger" plain @click="handleClearAll" v-if="!showingOrphans && !showingNoDimension">全部清除</el-button>
+            <el-button type="danger" @click="handleClearAllOrphans" v-if="showingOrphans">清除无效记录</el-button>
+            <el-button type="danger" @click="handleClearAllNoDimension" v-if="showingNoDimension">清除无维度项目</el-button>
             <el-button type="success" @click="handleSmartImport">智能导入</el-button>
             <el-button type="primary" @click="handleAdd">添加收费项目</el-button>
           </div>
@@ -61,20 +62,28 @@
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleSearch">查询</el-button>
-          <el-button type="warning" @click="handleShowOrphans">查看孤儿记录</el-button>
+          <el-button type="warning" @click="handleShowOrphans">查看无效记录</el-button>
+          <el-button type="info" @click="handleShowNoDimension">查看无维度项目</el-button>
         </el-form-item>
       </el-form>
 
       <!-- 提示信息 -->
       <el-alert
         v-if="showingOrphans"
-        title="正在显示所有孤儿记录（收费编码不在收费项目表中的记录）"
+        title="正在显示所有无效记录（收费编码不在收费项目表中的记录）"
         type="warning"
         :closable="false"
         style="margin-bottom: 16px"
       />
       <el-alert
-        v-else-if="!showingOrphans && dimensionIds.length === 0 && tableData.length > 0"
+        v-if="showingNoDimension"
+        title="正在显示所有无维度项目（维度信息为空或找不到对应维度记录）"
+        type="info"
+        :closable="false"
+        style="margin-bottom: 16px"
+      />
+      <el-alert
+        v-else-if="!showingOrphans && !showingNoDimension && dimensionIds.length === 0 && tableData.length > 0"
         title="正在显示所有维度的收费项目"
         type="info"
         :closable="false"
@@ -125,7 +134,7 @@
       v-model="dialogVisible"
       title="添加收费项目"
       width="600px"
-      custom-class="full-height-dialog"
+      append-to-body
     >
       <el-form>
         <el-form-item label="搜索收费项目">
@@ -181,7 +190,7 @@
       v-model="editDialogVisible"
       title="调整维度"
       width="500px"
-      custom-class="full-height-dialog"
+      append-to-body
     >
       <el-form label-width="120px">
         <el-form-item label="收费项目">
@@ -261,7 +270,8 @@ const searchResults = ref<ChargeItem[]>([])
 const selectedItems = ref<ChargeItem[]>([])
 const modelVersions = ref<any[]>([]) // 模型版本列表
 const leafDimensions = ref<any[]>([]) // 末级维度列表
-const showingOrphans = ref(false) // 是否正在显示孤儿记录
+const showingOrphans = ref(false) // 是否正在显示无效记录
+const showingNoDimension = ref(false) // 是否正在显示无维度项目
 
 const searchForm = reactive({
   keyword: ''
@@ -276,13 +286,14 @@ const pagination = reactive({
 const tableData = ref<DimensionItem[]>([])
 
 // 获取维度目录列表
-const fetchDimensionItems = async (orphansOnly = false) => {
+const fetchDimensionItems = async (orphansOnly = false, noDimensionOnly = false) => {
   loading.value = true
   try {
     const params: any = {
       page: pagination.page,
       size: pagination.size,
-      orphans_only: orphansOnly
+      orphans_only: orphansOnly,
+      no_dimension_only: noDimensionOnly
     }
     
     // 只有在不是查看孤儿记录且选择了维度时才传递维度code
@@ -306,6 +317,7 @@ const fetchDimensionItems = async (orphansOnly = false) => {
     tableData.value = res.items
     pagination.total = res.total
     showingOrphans.value = orphansOnly
+    showingNoDimension.value = noDimensionOnly
   } catch (error) {
     ElMessage.error('获取维度目录失败')
   } finally {
@@ -317,25 +329,35 @@ const fetchDimensionItems = async (orphansOnly = false) => {
 const handleSearch = () => {
   pagination.page = 1
   showingOrphans.value = false
+  showingNoDimension.value = false
   fetchDimensionItems()
 }
 
-// 查看孤儿记录
+// 查看无效记录
 const handleShowOrphans = () => {
   pagination.page = 1
   searchForm.keyword = ''
-  fetchDimensionItems(true)
+  showingNoDimension.value = false
+  fetchDimensionItems(true, false)
+}
+
+// 查看无维度项目
+const handleShowNoDimension = () => {
+  pagination.page = 1
+  searchForm.keyword = ''
+  showingOrphans.value = false
+  fetchDimensionItems(false, true)
 }
 
 // 处理每页数量变化
 const handleSizeChange = () => {
   pagination.page = 1 // 改变每页数量时重置到第一页
-  fetchDimensionItems(showingOrphans.value)
+  fetchDimensionItems(showingOrphans.value, showingNoDimension.value)
 }
 
 // 处理页码变化
 const handlePageChange = () => {
-  fetchDimensionItems(showingOrphans.value)
+  fetchDimensionItems(showingOrphans.value, showingNoDimension.value)
 }
 
 // 打开添加对话框
@@ -514,9 +536,8 @@ const handleSmartImport = () => {
 // 导入成功回调
 const handleImportSuccess = () => {
   ElMessage.success('导入成功')
-  if (dimensionId.value) {
-    fetchDimensionItems()
-  }
+  // 刷新当前列表
+  fetchDimensionItems()
 }
 
 // 全部清除
@@ -567,11 +588,11 @@ const handleClearAll = async () => {
   }
 }
 
-// 清除所有孤儿记录
+// 清除所有无效记录
 const handleClearAllOrphans = async () => {
   try {
     await ElMessageBox.confirm(
-      `确定要清除所有孤儿记录吗？共 ${pagination.total} 条记录。此操作不可恢复！`,
+      `确定要清除所有无效记录吗？共 ${pagination.total} 条记录。此操作不可恢复！`,
       '警告',
       {
         confirmButtonText: '确定清除',
@@ -582,9 +603,34 @@ const handleClearAllOrphans = async () => {
     )
 
     const res = await request.delete('/dimension-items/orphans/clear-all')
-    ElMessage.success(res.message || `已清除 ${res.deleted_count} 条孤儿记录`)
-    // 重新查询孤儿记录
-    fetchDimensionItems(true)
+    ElMessage.success(res.message || `已清除 ${res.deleted_count} 条无效记录`)
+    // 重新查询无效记录
+    fetchDimensionItems(true, false)
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error('清除失败')
+    }
+  }
+}
+
+// 清除所有无维度项目
+const handleClearAllNoDimension = async () => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要清除所有无维度项目吗？共 ${pagination.total} 条记录。此操作不可恢复！`,
+      '警告',
+      {
+        confirmButtonText: '确定清除',
+        cancelButtonText: '取消',
+        type: 'warning',
+        confirmButtonClass: 'el-button--danger'
+      }
+    )
+
+    const res = await request.delete('/dimension-items/no-dimension/clear-all')
+    ElMessage.success(res.message || `已清除 ${res.deleted_count} 条无维度项目`)
+    // 重新查询无维度项目
+    fetchDimensionItems(false, true)
   } catch (error: any) {
     if (error !== 'cancel') {
       ElMessage.error('清除失败')

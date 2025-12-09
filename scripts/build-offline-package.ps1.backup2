@@ -1,0 +1,490 @@
+# ============================================
+# Hospital Department Value Assessment Tool - Offline Package Build Script (PowerShell)
+# For: Windows + Docker Desktop
+#
+# Usage:
+#   .\scripts\build-offline-package.ps1           # Run all steps
+#   .\scripts\build-offline-package.ps1 -StartFrom 3  # Start from step 3
+# ============================================
+
+param(
+    [int]$StartFrom = 1  # Which step to start from (1-6)
+)
+
+$ErrorActionPreference = "Stop"
+
+Write-Host "==========================================" -ForegroundColor Cyan
+Write-Host "  Offline Package Build Tool" -ForegroundColor Cyan
+Write-Host "==========================================" -ForegroundColor Cyan
+Write-Host ""
+
+if ($StartFrom -gt 1) {
+    Write-Host "Starting from step $StartFrom (skipping steps 1-$($StartFrom-1))" -ForegroundColor Yellow
+    Write-Host ""
+}
+
+# Check migration files
+Write-Host ">>> Checking migration files..." -ForegroundColor Yellow
+$migrationCount = (Get-ChildItem -Path "backend\alembic\versions\*.py" -ErrorAction SilentlyContinue).Count
+if ($migrationCount -eq 0) {
+    Write-Host "Warning: No migration files found" -ForegroundColor Yellow
+} else {
+    Write-Host "Found $migrationCount migration files" -ForegroundColor Green
+}
+Write-Host ""
+
+# Check Docker
+Write-Host ">>> Checking Docker environment..." -ForegroundColor Yellow
+try {
+    $null = docker version 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Docker command failed"
+    }
+    Write-Host "Docker is running" -ForegroundColor Green
+} catch {
+    Write-Host "Docker is not running, please start Docker Desktop" -ForegroundColor Red
+    exit 1
+}
+
+# Set version
+$VERSION = "1.0.0"
+Write-Host ">>> Build version: $VERSION" -ForegroundColor Yellow
+Write-Host ""
+
+# Create output directories
+$PACKAGE_DIR = "offline-package"
+$IMAGES_DIR = "$PACKAGE_DIR\images"
+$DATABASE_DIR = "$PACKAGE_DIR\database"
+$CONFIG_DIR = "$PACKAGE_DIR\config"
+$SCRIPTS_DIR = "$PACKAGE_DIR\scripts"
+$DOCS_DIR = "$PACKAGE_DIR\docs"
+
+if ($StartFrom -le 1) {
+    Write-Host ">>> Cleaning old package directory..." -ForegroundColor Yellow
+    if (Test-Path $PACKAGE_DIR) {
+        Remove-Item -Path $PACKAGE_DIR -Recurse -Force
+        Write-Host "Old directory cleaned" -ForegroundColor Green
+    }
+}
+
+Write-Host ">>> Creating directory structure..." -ForegroundColor Yellow
+New-Item -ItemType Directory -Path $IMAGES_DIR -Force | Out-Null
+New-Item -ItemType Directory -Path $DATABASE_DIR -Force | Out-Null
+New-Item -ItemType Directory -Path $CONFIG_DIR -Force | Out-Null
+New-Item -ItemType Directory -Path $SCRIPTS_DIR -Force | Out-Null
+New-Item -ItemType Directory -Path $DOCS_DIR -Force | Out-Null
+Write-Host "Directories created" -ForegroundColor Green
+Write-Host ""
+
+# Step 1: Pull base images
+if ($StartFrom -le 1) {
+Write-Host "==========================================" -ForegroundColor Cyan
+Write-Host "  Step 1/6: Pull base images" -ForegroundColor Cyan
+Write-Host "==========================================" -ForegroundColor Cyan
+
+Write-Host ">>> Checking python:3.12 image..." -ForegroundColor Yellow
+$null = docker image inspect python:3.12 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Pulling python:3.12 image..." -ForegroundColor Yellow
+    docker pull python:3.12
+}
+Write-Host "Python image ready" -ForegroundColor Green
+
+Write-Host ">>> Checking node:18-alpine image..." -ForegroundColor Yellow
+$null = docker image inspect node:18-alpine 2>&1
+if ($LASTEXITCODE -ne 0) {
+    docker pull node:18-alpine
+}
+Write-Host "Node image ready" -ForegroundColor Green
+
+Write-Host ">>> Checking nginx:alpine image..." -ForegroundColor Yellow
+$null = docker image inspect nginx:alpine 2>&1
+if ($LASTEXITCODE -ne 0) {
+    docker pull nginx:alpine
+}
+Write-Host "Nginx image ready" -ForegroundColor Green
+Write-Host ""
+}
+
+# Step 2: Build Docker images
+if ($StartFrom -le 2) {
+Write-Host "==========================================" -ForegroundColor Cyan
+Write-Host "  Step 2/6: Build Docker images" -ForegroundColor Cyan
+Write-Host "==========================================" -ForegroundColor Cyan
+
+Write-Host ">>> Building backend image..." -ForegroundColor Yellow
+docker build --platform linux/amd64 -t hospital-backend:latest .\backend
+if ($LASTEXITCODE -ne 0) { exit 1 }
+Write-Host "Backend image built" -ForegroundColor Green
+
+Write-Host ">>> Building frontend image..." -ForegroundColor Yellow
+docker build --platform linux/amd64 -t hospital-frontend:latest .\frontend
+if ($LASTEXITCODE -ne 0) { exit 1 }
+Write-Host "Frontend image built" -ForegroundColor Green
+
+Write-Host ">>> Checking Redis image..." -ForegroundColor Yellow
+$null = docker image inspect redis:7-alpine 2>&1
+if ($LASTEXITCODE -ne 0) {
+    docker pull redis:7-alpine
+}
+Write-Host "Redis image ready" -ForegroundColor Green
+Write-Host ""
+}
+
+# Step 3: Export Docker images
+if ($StartFrom -le 3) {
+Write-Host "==========================================" -ForegroundColor Cyan
+Write-Host "  Step 3/6: Export Docker images" -ForegroundColor Cyan
+Write-Host "==========================================" -ForegroundColor Cyan
+
+# Check 7z
+if (-not (Get-Command 7z -ErrorAction SilentlyContinue)) {
+    Write-Host "Error: 7z not found in PATH" -ForegroundColor Red
+    Write-Host "Please install 7-Zip and add it to PATH" -ForegroundColor Yellow
+    Write-Host "Download: https://www.7-zip.org/" -ForegroundColor Yellow
+    exit 1
+}
+
+Write-Host ">>> Exporting backend image..." -ForegroundColor Yellow
+docker save hospital-backend:latest -o "$IMAGES_DIR\backend.tar"
+Write-Host "Compressing with 7z..." -ForegroundColor Yellow
+Remove-Item "$IMAGES_DIR\backend.tar.gz" -Force -ErrorAction SilentlyContinue
+& 7z a "$IMAGES_DIR\backend.tar.gz" "$IMAGES_DIR\backend.tar" -mx=1 | Out-Null
+if ($LASTEXITCODE -eq 0) {
+    Remove-Item "$IMAGES_DIR\backend.tar" -Force
+    $backendSize = [math]::Round((Get-Item "$IMAGES_DIR\backend.tar.gz").Length / 1MB, 2)
+    Write-Host "Backend image exported ($backendSize MB)" -ForegroundColor Green
+} else {
+    Write-Host "Compression failed" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host ">>> Exporting frontend image..." -ForegroundColor Yellow
+docker save hospital-frontend:latest -o "$IMAGES_DIR\frontend.tar"
+Write-Host "Compressing with 7z..." -ForegroundColor Yellow
+Remove-Item "$IMAGES_DIR\frontend.tar.gz" -Force -ErrorAction SilentlyContinue
+& 7z a "$IMAGES_DIR\frontend.tar.gz" "$IMAGES_DIR\frontend.tar" -mx=1 | Out-Null
+if ($LASTEXITCODE -eq 0) {
+    Remove-Item "$IMAGES_DIR\frontend.tar" -Force
+    $frontendSize = [math]::Round((Get-Item "$IMAGES_DIR\frontend.tar.gz").Length / 1MB, 2)
+    Write-Host "Frontend image exported ($frontendSize MB)" -ForegroundColor Green
+} else {
+    Write-Host "Compression failed" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host ">>> Exporting Redis image..." -ForegroundColor Yellow
+docker save redis:7-alpine -o "$IMAGES_DIR\redis.tar"
+Write-Host "Compressing with 7z..." -ForegroundColor Yellow
+Remove-Item "$IMAGES_DIR\redis.tar.gz" -Force -ErrorAction SilentlyContinue
+& 7z a "$IMAGES_DIR\redis.tar.gz" "$IMAGES_DIR\redis.tar" -mx=1 | Out-Null
+if ($LASTEXITCODE -eq 0) {
+    Remove-Item "$IMAGES_DIR\redis.tar" -Force
+    $redisSize = [math]::Round((Get-Item "$IMAGES_DIR\redis.tar.gz").Length / 1MB, 2)
+    Write-Host "Redis image exported ($redisSize MB)" -ForegroundColor Green
+} else {
+    Write-Host "Compression failed" -ForegroundColor Red
+    exit 1
+}
+Write-Host ""
+}
+
+# Step 4: Export database
+if ($StartFrom -le 4) {
+Write-Host "==========================================" -ForegroundColor Cyan
+Write-Host "  Step 4/6: Export database (using pg_dump)" -ForegroundColor Cyan
+Write-Host "==========================================" -ForegroundColor Cyan
+
+if (Test-Path "backend\.env") {
+    Write-Host ">>> Using pg_dump to export complete database..." -ForegroundColor Yellow
+    Write-Host ""
+    
+    # Read database connection info (only non-commented lines)
+    $envContent = Get-Content "backend\.env" | Where-Object { $_ -notmatch '^\s*#' -and $_ -match 'DATABASE_URL=' } | Select-Object -First 1
+    if ($envContent -match 'DATABASE_URL=postgresql://([^:]+):([^@]+)@([^:]+):([0-9]+)/(.+)') {
+        $DB_USER = $matches[1]
+        $DB_PASSWORD = $matches[2]
+        $DB_HOST = $matches[3]
+        $DB_PORT = $matches[4]
+        $DB_NAME = $matches[5]
+        
+        # Handle host.docker.internal
+        if ($DB_HOST -eq "host.docker.internal") {
+            $DB_HOST = "localhost"
+        }
+        
+        Write-Host "Database host: $DB_HOST" -ForegroundColor Cyan
+        Write-Host "Database port: $DB_PORT" -ForegroundColor Cyan
+        Write-Host "Database name: $DB_NAME" -ForegroundColor Cyan
+        Write-Host ""
+        
+        # Check if pg_dump is available locally
+        $pgDumpPath = $null
+        
+        # Try common PostgreSQL installation paths on Windows
+        $commonPaths = @(
+            "C:\Program Files\PostgreSQL\*\bin\pg_dump.exe",
+            "C:\Program Files (x86)\PostgreSQL\*\bin\pg_dump.exe",
+            "C:\software\PostgreSQL\*\bin\pg_dump.exe"
+        )
+        
+        foreach ($pattern in $commonPaths) {
+            $found = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) {
+                $pgDumpPath = $found.FullName
+                break
+            }
+        }
+        
+        # Also check if pg_dump is in PATH
+        if (-not $pgDumpPath) {
+            $pgDumpPath = (Get-Command pg_dump -ErrorAction SilentlyContinue).Source
+        }
+        
+        if ($pgDumpPath) {
+            Write-Host ">>> Using local pg_dump with selective data export..." -ForegroundColor Yellow
+            Write-Host ""
+            
+            # Read exclude list from config file
+            $excludeFile = ".offline-package-exclude-tables.txt"
+            if (-not (Test-Path $excludeFile)) {
+                Write-Host "Error: Exclude file not found: $excludeFile" -ForegroundColor Red
+                Write-Host "  Please create this file and list tables to exclude (one per line)" -ForegroundColor Yellow
+                exit 1
+            }
+            
+            # Read and filter exclude list (ignore empty lines and comments)
+            $tablesSchemaOnly = Get-Content $excludeFile | 
+                Where-Object { $_ -notmatch '^\s*#' -and $_ -notmatch '^\s*$' } |
+                ForEach-Object { $_.Trim() }
+            
+            if ($tablesSchemaOnly.Count -eq 0) {
+                Write-Host "Warning: Exclude list is empty, will export all table data" -ForegroundColor Yellow
+            }
+            
+            Write-Host "Export strategy:" -ForegroundColor Cyan
+            Write-Host "  - Exclude file: $excludeFile" -ForegroundColor Cyan
+            Write-Host "  - Large data tables (schema only): $($tablesSchemaOnly.Count)" -ForegroundColor Yellow
+            Write-Host "  - All other tables (with data): Auto-included" -ForegroundColor Green
+            Write-Host ""
+            
+            if ($tablesSchemaOnly.Count -gt 0) {
+                Write-Host "Excluded tables (schema only):" -ForegroundColor Yellow
+                foreach ($table in $tablesSchemaOnly) {
+                    Write-Host "  - $table" -ForegroundColor Yellow
+                }
+                Write-Host ""
+            }
+            
+            $env:PGPASSWORD = $DB_PASSWORD
+            
+            # 1. Export complete table structure (all tables)
+            Write-Host ">>> Step 1/3: Exporting complete table structure..." -ForegroundColor Yellow
+            & $pgDumpPath `
+                -h $DB_HOST `
+                -p $DB_PORT `
+                -U $DB_USER `
+                -d $DB_NAME `
+                -f "$DATABASE_DIR\schema.sql" `
+                --schema-only `
+                --no-owner `
+                --no-acl
+            
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "Error: Table structure export failed" -ForegroundColor Red
+                Remove-Item "$DATABASE_DIR\schema.sql" -ErrorAction SilentlyContinue
+                exit 1
+            }
+            Write-Host "Table structure export completed" -ForegroundColor Green
+            
+            # 2. Export all table data (using exclude list)
+            Write-Host ">>> Step 2/3: Exporting data (excluding large tables)..." -ForegroundColor Yellow
+            $excludeArgs = $tablesSchemaOnly | ForEach-Object { "--exclude-table-data=$_" }
+            & $pgDumpPath `
+                -h $DB_HOST `
+                -p $DB_PORT `
+                -U $DB_USER `
+                -d $DB_NAME `
+                -f "$DATABASE_DIR\data.sql" `
+                --data-only `
+                --no-owner `
+                --no-acl `
+                @excludeArgs
+            
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "Error: Data export failed" -ForegroundColor Red
+                Remove-Item "$DATABASE_DIR\data.sql" -ErrorAction SilentlyContinue
+                exit 1
+            }
+            Write-Host "Data export completed" -ForegroundColor Green
+            
+            # 3. Merge files
+            Write-Host ">>> Step 3/3: Merging SQL files..." -ForegroundColor Yellow
+            Get-Content "$DATABASE_DIR\schema.sql", "$DATABASE_DIR\data.sql" | Set-Content "$DATABASE_DIR\database.sql" -Encoding UTF8
+            Remove-Item "$DATABASE_DIR\schema.sql", "$DATABASE_DIR\data.sql" -Force
+            Write-Host "SQL files merged" -ForegroundColor Green
+            
+            # 4. Compress
+            Write-Host ">>> Compressing SQL file..." -ForegroundColor Yellow
+            if (Get-Command 7z -ErrorAction SilentlyContinue) {
+                Remove-Item "$DATABASE_DIR\database.sql.gz" -Force -ErrorAction SilentlyContinue
+                & 7z a "$DATABASE_DIR\database.sql.gz" "$DATABASE_DIR\database.sql" -mx=9 | Out-Null
+                if ($LASTEXITCODE -eq 0) {
+                    Remove-Item "$DATABASE_DIR\database.sql" -Force
+                    $dbSize = [math]::Round((Get-Item "$DATABASE_DIR\database.sql.gz").Length / 1MB, 2)
+                } else {
+                    $dbSize = [math]::Round((Get-Item "$DATABASE_DIR\database.sql").Length / 1MB, 2)
+                    Write-Host "  Note: SQL file not compressed" -ForegroundColor Yellow
+                }
+            } else {
+                $dbSize = [math]::Round((Get-Item "$DATABASE_DIR\database.sql").Length / 1MB, 2)
+                Write-Host "  Note: 7z not found, SQL file not compressed" -ForegroundColor Yellow
+            }
+            
+            # Get pg_dump version
+            $pgVersion = & $pgDumpPath --version 2>&1 | Select-String -Pattern '\d+\.\d+' | ForEach-Object { $_.Matches.Value } | Select-Object -First 1
+            
+            Write-Host ""
+            Write-Host "Database export completed ($dbSize MB)" -ForegroundColor Green
+            Write-Host ""
+            Write-Host "Export contents:" -ForegroundColor Cyan
+            Write-Host "  - PostgreSQL version: $pgVersion" -ForegroundColor Cyan
+            Write-Host "  - All table structures (with indexes, constraints)" -ForegroundColor Cyan
+            Write-Host "  - All table data (excluding $($tablesSchemaOnly.Count) large tables)" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host "Excluded tables (schema only):" -ForegroundColor Yellow
+            foreach ($table in $tablesSchemaOnly) {
+                Write-Host "  - $table" -ForegroundColor Yellow
+            }
+            Write-Host ""
+            Write-Host "Note: After deployment, you need to import business data to these tables" -ForegroundColor Yellow
+        } else {
+            Write-Host "Local pg_dump not found" -ForegroundColor Yellow
+            Write-Host "  Trying to use Docker PostgreSQL client..." -ForegroundColor Yellow
+            Write-Host "  (Implementation similar to above, using Docker)" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "Cannot parse DATABASE_URL" -ForegroundColor Red
+        Write-Host "Skipping database export" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "backend\.env not found, skipping database export" -ForegroundColor Yellow
+}
+Write-Host ""
+}
+
+# Step 5: Copy config files and scripts
+if ($StartFrom -le 5) {
+Write-Host "==========================================" -ForegroundColor Cyan
+Write-Host "  Step 5/6: Copy config files and scripts" -ForegroundColor Cyan
+Write-Host "==========================================" -ForegroundColor Cyan
+
+if (Test-Path "docker-compose.offline.yml") {
+    Copy-Item "docker-compose.offline.yml" "$CONFIG_DIR\" -Force
+}
+if (Test-Path "backend\.env.offline.template") {
+    Copy-Item "backend\.env.offline.template" "$CONFIG_DIR\" -Force
+}
+
+$scripts = @("deploy-offline.sh", "load-images.sh", "init-database.sh", "check-prerequisites.sh")
+foreach ($script in $scripts) {
+    if (Test-Path "scripts\$script") {
+        Copy-Item "scripts\$script" "$SCRIPTS_DIR\" -Force
+    }
+}
+
+# Create README
+Write-Host ">>> Creating README..." -ForegroundColor Yellow
+$readmeContent = @"
+# Hospital Department Value Assessment Tool - Offline Deployment Package v$VERSION
+
+## Package Contents
+
+- images/ - Docker image files
+- database/ - Database data files
+- config/ - Configuration files
+- scripts/ - Deployment scripts
+- docs/ - Deployment documentation
+
+## Quick Start
+
+### 1. Extract the package
+
+``````bash
+tar -xzf hospital-value-toolkit-offline-v$VERSION.tar.gz
+cd offline-package
+``````
+
+### 2. Load Docker images
+
+``````bash
+bash scripts/load-images.sh
+``````
+
+### 3. Configure environment
+
+``````bash
+cp config/.env.offline.template .env
+vi .env
+``````
+
+### 4. Initialize database
+
+``````bash
+bash scripts/init-database.sh
+``````
+
+### 5. Start services
+
+``````bash
+docker-compose -f config/docker-compose.offline.yml up -d
+``````
+
+### 6. Access the system
+
+- Frontend: http://localhost:80
+- Backend API: http://localhost:8000/docs
+
+## System Requirements
+
+- Linux server
+- Docker 20.10+
+- Docker Compose 2.0+
+- PostgreSQL database (existing instance)
+- At least 8GB RAM
+- At least 50GB disk space
+"@
+
+$readmePath = Join-Path $PWD "$PACKAGE_DIR\README.md"
+[System.IO.File]::WriteAllText($readmePath, $readmeContent, [System.Text.UTF8Encoding]::new($false))
+Write-Host "README.md created" -ForegroundColor Green
+
+Write-Host "Config files and scripts copied" -ForegroundColor Green
+Write-Host ""
+}
+
+# Step 6: Create final package
+if ($StartFrom -le 6) {
+Write-Host "==========================================" -ForegroundColor Cyan
+Write-Host "  Step 6/6: Create final package" -ForegroundColor Cyan
+Write-Host "==========================================" -ForegroundColor Cyan
+
+$PACKAGE_NAME = "hospital-value-toolkit-offline-v$VERSION.tar.gz"
+
+Write-Host ">>> Creating package..." -ForegroundColor Yellow
+tar -czf $PACKAGE_NAME $PACKAGE_DIR
+
+if ($LASTEXITCODE -eq 0) {
+    $packageSize = [math]::Round((Get-Item $PACKAGE_NAME).Length / 1MB, 2)
+    Write-Host ""
+    Write-Host "==========================================" -ForegroundColor Cyan
+    Write-Host "  Build Complete!" -ForegroundColor Cyan
+    Write-Host "==========================================" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Package: $PACKAGE_NAME" -ForegroundColor Green
+    Write-Host "Size: $packageSize MB" -ForegroundColor Green
+} else {
+    Write-Host "Package creation failed" -ForegroundColor Red
+    exit 1
+}
+}

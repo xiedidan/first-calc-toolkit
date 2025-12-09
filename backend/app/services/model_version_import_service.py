@@ -164,7 +164,8 @@ class ModelVersionImportService:
             unit=source_node.unit,
             business_guide=source_node.business_guide,
             script=source_node.script,
-            rule=source_node.rule
+            rule=source_node.rule,
+            orientation_rule_ids=source_node.orientation_rule_ids  # 复制导向规则ID列表
         )
         self.db.add(new_node)
         self.db.flush()  # 获取新节点ID

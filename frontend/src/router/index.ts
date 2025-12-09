@@ -29,6 +29,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '用户管理' }
       },
       {
+        path: '/roles',
+        name: 'Roles',
+        component: () => import('@/views/Roles.vue'),
+        meta: { title: '用户角色管理' }
+      },
+      {
         path: '/charge-items',
         name: 'ChargeItems',
         component: () => import('@/views/ChargeItems.vue'),
@@ -45,6 +51,12 @@ const routes: RouteRecordRaw[] = [
         name: 'DimensionItems',
         component: () => import('@/views/DimensionItems.vue'),
         meta: { title: '维度目录管理' }
+      },
+      {
+        path: '/cost-benchmarks',
+        name: 'CostBenchmarks',
+        component: () => import('@/views/CostBenchmarks.vue'),
+        meta: { title: '成本基准管理' }
       },
       {
         path: '/model-versions',
@@ -95,6 +107,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '系统设置' }
       },
       {
+        path: '/ai-config',
+        name: 'AIConfig',
+        component: () => import('@/views/AIConfig.vue'),
+        meta: { title: 'AI接口管理', requiresAdmin: true }
+      },
+      {
         path: '/calculation-tasks',
         name: 'CalculationTasks',
         component: () => import('@/views/CalculationTasks.vue'),
@@ -111,6 +129,66 @@ const routes: RouteRecordRaw[] = [
         name: 'Hospitals',
         component: () => import('@/views/Hospitals.vue'),
         meta: { title: '医疗机构管理', requiresAdmin: true }
+      },
+      {
+        path: '/data-issues',
+        name: 'DataIssues',
+        component: () => import('@/views/DataIssues.vue'),
+        meta: { title: '数据问题记录' }
+      },
+      {
+        path: '/orientation-rules',
+        name: 'OrientationRules',
+        component: () => import('@/views/OrientationRules.vue'),
+        meta: { title: '导向规则管理' }
+      },
+      {
+        path: '/orientation-benchmarks',
+        name: 'OrientationBenchmarks',
+        component: () => import('@/views/OrientationBenchmarks.vue'),
+        meta: { title: '导向基准管理' }
+      },
+      {
+        path: '/orientation-ladders',
+        name: 'OrientationLadders',
+        component: () => import('@/views/OrientationLadders.vue'),
+        meta: { title: '导向阶梯管理' }
+      },
+      {
+        path: '/classification-tasks',
+        name: 'ClassificationTasks',
+        component: () => import('@/views/ClassificationTasks.vue'),
+        meta: { title: '医技智能分类' }
+      },
+      {
+        path: '/classification-plans',
+        name: 'ClassificationPlans',
+        component: () => import('@/views/ClassificationPlans.vue'),
+        meta: { title: '分类预案管理' }
+      },
+      {
+        path: '/classification-plans/:id',
+        name: 'ClassificationPlanDetail',
+        component: () => import('@/views/ClassificationPlanDetail.vue'),
+        meta: { title: '预案详情' }
+      },
+      {
+        path: '/reference-values',
+        name: 'ReferenceValues',
+        component: () => import('@/views/ReferenceValues.vue'),
+        meta: { title: '参考价值管理' }
+      },
+      {
+        path: '/report-view',
+        name: 'ReportView',
+        component: () => import('@/views/ReportView.vue'),
+        meta: { title: '分析报告查看' }
+      },
+      {
+        path: '/report-management',
+        name: 'ReportManagement',
+        component: () => import('@/views/ReportManagement.vue'),
+        meta: { title: '分析报告管理', requiresAdmin: true }
       }
     ]
   }

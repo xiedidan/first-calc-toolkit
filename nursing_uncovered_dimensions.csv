@@ -1,0 +1,9 @@
+﻿code,name,weight,mapping_count,suggested_data_source,parent_code
+dim-nur-mon,监测护理,0.05,0,workload_statistics,agn-nur
+dim-nur-op-3,乙级手术管理,0.05,0,workload_statistics,dim-nur-op
+dim-nur-op-4,甲级手术管理,0.08,0,workload_statistics,dim-nur-op
+dim-nur-op-acad,学科手术管理,0.1,0,workload_statistics,dim-nur-op
+dim-nur-op-other,其他级别手术管理,0.03,0,workload_statistics,dim-nur-op
+dim-nur-or-large,大手术护理,350.0,0,workload_statistics,dim-nur-or
+dim-nur-or-mid,中手术护理,180.0,0,workload_statistics,dim-nur-or
+dim-nur-or-tiny,小手术护理,15.0,0,workload_statistics,dim-nur-or

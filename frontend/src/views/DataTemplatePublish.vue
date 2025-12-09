@@ -5,10 +5,18 @@
         <div class="card-header">
           <span>数据模板发布</span>
           <div class="header-buttons">
-            <el-button type="primary" @click="handleExport" :disabled="selectedIds.length === 0">
-              <el-icon><Download /></el-icon>
-              导出数据模板 ({{ selectedIds.length }})
-            </el-button>
+            <el-dropdown @command="handleExport" :disabled="selectedIds.length === 0" style="display: inline-block; vertical-align: middle; margin-left: 10px;">
+              <el-button type="primary" :disabled="selectedIds.length === 0">
+                <el-icon><Download /></el-icon>
+                导出数据模板 ({{ selectedIds.length }})<el-icon style="vertical-align: middle;"><arrow-down /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="markdown">导出为Markdown</el-dropdown-item>
+                  <el-dropdown-item command="pdf">导出为PDF</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </div>
       </template>
@@ -112,7 +120,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Search, Download } from '@element-plus/icons-vue'
+import { Search, Download, ArrowDown } from '@element-plus/icons-vue'
 import {
   getDataTemplates,
   type DataTemplate
@@ -281,7 +289,7 @@ const handleViewDetail = (row: DataTemplate) => {
 }
 
 // 导出数据模板
-const handleExport = async () => {
+const handleExport = async (format: 'markdown' | 'pdf' = 'markdown') => {
   if (selectedIds.value.length === 0) {
     ElMessage.warning('请选择要导出的数据模板')
     return
@@ -290,24 +298,36 @@ const handleExport = async () => {
   try {
     loading.value = true
     const response = await request({
-      url: '/data-templates/export',
+      url: `/data-templates/export?format=${format}`,
       method: 'post',
       data: { template_ids: selectedIds.value },
       responseType: 'blob'
     })
 
+    // 从响应头获取文件名
+    const extension = format === 'pdf' ? 'pdf' : 'md'
+    let filename = `数据模板_${new Date().toISOString().split('T')[0]}.${extension}`
+    const contentDisposition = response.headers?.['content-disposition']
+    if (contentDisposition && contentDisposition.includes("filename*=UTF-8''")) {
+      const filenameMatch = contentDisposition.split("filename*=UTF-8''")[1]
+      if (filenameMatch) {
+        filename = decodeURIComponent(filenameMatch)
+      }
+    }
+
     // 创建下载链接
-    const blob = new Blob([response], { type: 'text/markdown' })
-    const url = window.URL.createObjectURL(blob)
+    const mimeType = format === 'pdf' ? 'application/pdf' : 'text/markdown'
+    const blob = response.data || response
+    const url = window.URL.createObjectURL(new Blob([blob], { type: mimeType }))
     const link = document.createElement('a')
     link.href = url
-    link.download = `数据模板_${new Date().toISOString().split('T')[0]}.md`
+    link.download = filename
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
     window.URL.revokeObjectURL(url)
 
-    ElMessage.success('导出成功')
+    ElMessage.success(`导出${format === 'pdf' ? 'PDF' : 'Markdown'}成功`)
   } catch (error: any) {
     ElMessage.error(error.message || '导出失败')
   } finally {

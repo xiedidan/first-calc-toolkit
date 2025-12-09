@@ -1,0 +1,230 @@
+-- ============================================================================
+-- 步骤3: 业务导向调整
+-- ============================================================================
+-- 功能: 根据业务导向规则调整维度的学科业务价值（weight字段）
+-- 
+-- 输入参数(通过占位符):
+--   {task_id}    - 计算任务ID
+--   {version_id} - 模型版本ID
+--   {year_month} - 计算年月(格式: YYYY-MM)
+--
+-- 算法说明:
+--   对于"基准阶梯"型导向:
+--   1. 导向比例 = 当月科室导向取值 / 科室导向基准
+--   2. 根据导向比例从阶梯表查出管控力度
+--   3. 调整后的weight = 全院业务价值(model_nodes.weight) * 管控力度
+--
+-- 输出: 更新 calculation_results 表中维度节点的 weight 字段
+-- ============================================================================
+
+WITH orientation_ratios AS (
+    -- 第1步: 计算导向比例
+    -- 导向比例 = 当月实际值 / 基准值
+    SELECT 
+        ov.department_code,
+        ov.orientation_rule_id,
+        ov.actual_value,
+        ob.benchmark_value,
+        CASE 
+            WHEN ob.benchmark_value = 0 THEN NULL
+            ELSE ov.actual_value / ob.benchmark_value
+        END as orientation_ratio
+    FROM orientation_values ov
+    INNER JOIN orientation_benchmarks ob 
+        ON ov.orientation_rule_id = ob.rule_id
+        AND ov.department_code = ob.department_code
+        AND ov.hospital_id = ob.hospital_id
+    WHERE ov.year_month = '{year_month}'
+      AND ov.hospital_id = (
+          SELECT hospital_id 
+          FROM model_versions 
+          WHERE id = {version_id}
+      )
+),
+
+ladder_adjustments AS (
+    -- 第2步: 根据导向比例查找对应的管控力度
+    -- 从阶梯表中找到比例所在的区间
+    SELECT 
+        oratio.department_code,
+        oratio.orientation_rule_id,
+        oratio.orientation_ratio,
+        ol.adjustment_intensity
+    FROM orientation_ratios oratio
+    INNER JOIN orientation_ladders ol
+        ON oratio.orientation_rule_id = ol.rule_id
+    WHERE oratio.orientation_ratio IS NOT NULL
+      AND (ol.lower_limit IS NULL OR oratio.orientation_ratio >= ol.lower_limit)
+      AND (ol.upper_limit IS NULL OR oratio.orientation_ratio < ol.upper_limit)
+      AND ol.hospital_id = (
+          SELECT hospital_id 
+          FROM model_versions 
+          WHERE id = {version_id}
+      )
+),
+
+node_adjustments AS (
+    -- 第3步: 计算每个维度节点的调整后权重
+    -- 调整后weight = 原始weight * 管控力度
+    SELECT 
+        cr.id as result_id,
+        cr.node_id,
+        cr.department_id,
+        d.his_code as department_code,
+        mn.weight as original_weight,
+        la.orientation_rule_id,
+        la.adjustment_intensity,
+        mn.weight * la.adjustment_intensity as adjusted_weight
+    FROM calculation_results cr
+    INNER JOIN model_nodes mn 
+        ON cr.node_id = mn.id
+    INNER JOIN departments d
+        ON cr.department_id = d.id
+    LEFT JOIN ladder_adjustments la
+        ON d.his_code = la.department_code
+        AND la.orientation_rule_id = ANY(mn.orientation_rule_ids)  -- 使用数组匹配
+    WHERE cr.task_id = '{task_id}'
+      AND cr.node_type = 'dimension'
+      AND mn.orientation_rule_ids IS NOT NULL  -- 只调整配置了导向的维度
+      AND array_length(mn.orientation_rule_ids, 1) > 0
+),
+
+all_node_rules AS (
+    -- 第3.5步: 展开每个节点的所有导向规则
+    SELECT 
+        cr.id as result_id,
+        cr.node_id,
+        cr.department_id,
+        d.accounting_unit_code as department_code,
+        d.his_name as department_name,
+        mn.code as node_code,
+        mn.name as node_name,
+        mn.weight as original_weight,
+        UNNEST(mn.orientation_rule_ids) as orientation_rule_id,
+        mv.hospital_id
+    FROM calculation_results cr
+    INNER JOIN model_nodes mn ON cr.node_id = mn.id
+    INNER JOIN departments d ON cr.department_id = d.id
+    INNER JOIN model_versions mv ON mn.version_id = mv.id
+    WHERE cr.task_id = '{task_id}'
+      AND cr.node_type = 'dimension'
+      AND mn.orientation_rule_ids IS NOT NULL
+      AND array_length(mn.orientation_rule_ids, 1) > 0
+      AND d.accounting_unit_code IS NOT NULL  -- 只处理有核算编码的科室
+),
+
+detail_records AS (
+    -- 第3.6步: 关联导向数据和阶梯
+    SELECT 
+        '{task_id}' as task_id,
+        anr.hospital_id,
+        SUBSTRING('{year_month}', 1, 7) as year_month,
+        anr.department_id,
+        anr.department_code,
+        anr.department_name,
+        anr.node_id,
+        anr.node_code,
+        anr.node_name,
+        anr.orientation_rule_id,
+        orule.name as orientation_rule_name,
+        CAST(orule.category AS VARCHAR(20)) as orientation_type,
+        oratio.actual_value,
+        oratio.benchmark_value,
+        oratio.orientation_ratio,
+        ol.id as ladder_id,
+        ol.lower_limit as ladder_lower_limit,
+        ol.upper_limit as ladder_upper_limit,
+        la.adjustment_intensity,
+        anr.original_weight,
+        CASE 
+            WHEN la.adjustment_intensity IS NOT NULL 
+            THEN anr.original_weight * la.adjustment_intensity
+            ELSE NULL
+        END as adjusted_weight,
+        (la.adjustment_intensity IS NOT NULL) as is_adjusted,
+        CASE 
+            WHEN oratio.actual_value IS NULL THEN '缺少导向实际值'
+            WHEN oratio.benchmark_value IS NULL THEN '缺少导向基准值'
+            WHEN oratio.benchmark_value = 0 THEN '基准值为0'
+            WHEN la.adjustment_intensity IS NULL THEN '未匹配到阶梯'
+            ELSE NULL
+        END as adjustment_reason
+    FROM all_node_rules anr
+    INNER JOIN orientation_rules orule ON anr.orientation_rule_id = orule.id
+    LEFT JOIN orientation_ratios oratio 
+        ON anr.department_code = oratio.department_code
+        AND anr.orientation_rule_id = oratio.orientation_rule_id
+    LEFT JOIN ladder_adjustments la
+        ON anr.department_code = la.department_code
+        AND anr.orientation_rule_id = la.orientation_rule_id
+    LEFT JOIN orientation_ladders ol
+        ON anr.orientation_rule_id = ol.rule_id
+        AND anr.hospital_id = ol.hospital_id
+        AND oratio.orientation_ratio IS NOT NULL
+        AND (ol.lower_limit IS NULL OR oratio.orientation_ratio >= ol.lower_limit)
+        AND (ol.upper_limit IS NULL OR oratio.orientation_ratio < ol.upper_limit)
+)
+
+-- 第4步: 插入明细记录
+INSERT INTO orientation_adjustment_details (
+    task_id, hospital_id, year_month,
+    department_id, department_code, department_name,
+    node_id, node_code, node_name,
+    orientation_rule_id, orientation_rule_name, orientation_type,
+    actual_value, benchmark_value, orientation_ratio,
+    ladder_id, ladder_lower_limit, ladder_upper_limit,
+    adjustment_intensity, original_weight, adjusted_weight,
+    is_adjusted, adjustment_reason, created_at
+)
+SELECT 
+    task_id, hospital_id, year_month,
+    department_id, department_code, department_name,
+    node_id, node_code, node_name,
+    orientation_rule_id, orientation_rule_name, orientation_type,
+    actual_value, benchmark_value, orientation_ratio,
+    ladder_id, ladder_lower_limit, ladder_upper_limit,
+    adjustment_intensity, original_weight, adjusted_weight,
+    is_adjusted, adjustment_reason, NOW()
+FROM detail_records;
+
+-- 第5步: 更新 calculation_results 表中的 weight 字段
+UPDATE calculation_results cr
+SET weight = oad.adjusted_weight
+FROM orientation_adjustment_details oad
+WHERE cr.task_id = oad.task_id
+  AND cr.department_id = oad.department_id
+  AND cr.node_id = oad.node_id
+  AND oad.is_adjusted = TRUE
+  AND oad.adjusted_weight IS NOT NULL;
+
+-- 返回更新的记录数
+SELECT COUNT(*) as updated_count
+FROM calculation_results cr
+INNER JOIN model_nodes mn ON cr.node_id = mn.id
+WHERE cr.task_id = '{task_id}'
+  AND cr.node_type = 'dimension'
+  AND mn.orientation_rule_ids IS NOT NULL
+  AND array_length(mn.orientation_rule_ids, 1) > 0;
+
+-- ============================================================================
+-- 使用说明:
+-- ============================================================================
+-- 1. 此步骤在Step2（维度统计）之后、Step4（价值汇总）之前执行
+-- 2. 只调整配置了导向规则的维度节点
+-- 3. 未配置导向的维度保持原始权重不变
+-- 4. 调整后的权重会影响Step4的价值汇总结果
+-- 5. 占位符会在执行时自动替换:
+--    {task_id} -> 计算任务ID
+--    {version_id} -> 模型版本ID
+--    {year_month} -> 计算年月(如: 2025-11)
+-- ============================================================================
+
+-- ============================================================================
+-- 注意事项:
+-- ============================================================================
+-- 1. 基准值为0时，导向比例设为NULL，不进行调整
+-- 2. 阶梯区间使用左闭右开原则: [lower_limit, upper_limit)
+-- 3. 阶梯的上下限可以为NULL，表示正负无穷
+-- 4. 当前仅实现"基准阶梯"型导向，其他类型导向需要扩展
+-- 5. 如果科室没有导向实际值数据，该科室的维度权重不会被调整
+-- ============================================================================

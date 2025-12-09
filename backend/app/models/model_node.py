@@ -2,7 +2,7 @@
 模型节点模型
 """
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Text, Numeric, Boolean
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Text, Numeric, Boolean, ARRAY
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -25,6 +25,8 @@ class ModelNode(Base):
     business_guide = Column(Text, comment="业务导向")
     script = Column(Text, comment="SQL/Python脚本")
     rule = Column(Text, comment="规则说明")
+    orientation_rule_id = Column(Integer, ForeignKey("orientation_rules.id", ondelete="SET NULL"), nullable=True, comment="关联导向规则ID（已废弃，使用orientation_rule_ids）")
+    orientation_rule_ids = Column(ARRAY(Integer), nullable=True, comment="关联导向规则ID列表")
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -32,3 +34,4 @@ class ModelNode(Base):
     version = relationship("ModelVersion", back_populates="nodes")
     parent = relationship("ModelNode", remote_side=[id], back_populates="children")
     children = relationship("ModelNode", back_populates="parent", cascade="all, delete-orphan")
+    orientation_rule = relationship("OrientationRule", back_populates="model_nodes")

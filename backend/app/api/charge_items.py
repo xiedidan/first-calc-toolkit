@@ -4,7 +4,7 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, desc, asc
+from sqlalchemy import or_, desc, asc, cast, Numeric
 import openpyxl
 
 from app.api import deps
@@ -52,7 +52,12 @@ def get_charge_items(
         query = query.filter(ChargeItem.item_category == item_category)
     
     # 排序
-    sort_column = getattr(ChargeItem, sort_by, ChargeItem.item_code)
+    if sort_by == "unit_price":
+        # 单价按数字排序（转换字符串为数字，NULL 值排在最后）
+        sort_column = cast(ChargeItem.unit_price, Numeric)
+    else:
+        sort_column = getattr(ChargeItem, sort_by, ChargeItem.item_code)
+    
     if sort_order == "desc":
         query = query.order_by(desc(sort_column))
     else:

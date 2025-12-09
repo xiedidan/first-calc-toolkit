@@ -82,13 +82,6 @@ def create_department(
     # 获取当前医疗机构ID
     hospital_id = get_current_hospital_id_or_raise()
     
-    # 检查HIS代码是否已存在（同一医疗机构内）
-    query = db.query(Department).filter(Department.his_code == department_in.his_code)
-    query = apply_hospital_filter(query, Department, required=True)
-    existing = query.first()
-    if existing:
-        raise HTTPException(status_code=400, detail="HIS科室代码已存在")
-    
     # 如果没有指定排序序号，自动设置为最大序号+1（同一医疗机构内）
     department_data = department_in.model_dump()
     if department_data.get("sort_order") is None:

@@ -7,10 +7,22 @@
 2. 读取系统中的收费项目信息
 3. 读取维度-收费项目映射关系
 4. 生成符合实际业务逻辑的测试数据
-5. 插入到外部数据源数据库
+5. 插入到外部数据源数据库的源表（TB_MZ_SFMXB、TB_ZY_SFMXB）
+
+数据表:
+- TB_MZ_SFMXB: 门诊收费明细表
+- TB_ZY_SFMXB: 住院收费明细表
+- charge_details: 统一收费明细表（由步骤1从源表生成）
+- workload_statistics: 工作量统计表
 
 使用方法:
     python generate_test_data.py --hospital-id 1 --period 2025-10 --record-count 100
+    
+    # 指定数据源
+    python generate_test_data.py --hospital-id 1 --period 2025-11 --record-count 500 --data-source-id 2
+    
+    # 预览模式（不实际插入）
+    python generate_test_data.py --hospital-id 1 --period 2025-11 --record-count 100 --dry-run
 """
 
 import argparse
@@ -130,6 +142,7 @@ def get_external_data_source(db: Session, data_source_id: int = None) -> DataSou
 def generate_charge_records(
     departments: List[Department],
     charge_items: List[ChargeItem],
+    mappings: List[DimensionItemMapping],
     period: str,
     record_count: int,
     patient_count: int
@@ -146,14 +159,47 @@ def generate_charge_records(
     else:
         end_date = datetime(int(year), int(month) + 1, 1) - timedelta(days=1)
     
+    # 优先使用维度映射中的收费项目
+    mapped_item_codes = set(m.item_code for m in mappings)
+    mapped_items = [item for item in charge_items if item.item_code in mapped_item_codes]
+    
+    print(f"\n   📊 数据匹配分析:")
+    print(f"   - 维度映射中的收费项目编码数: {len(mapped_item_codes)}")
+    print(f"   - 系统收费项目总数: {len(charge_items)}")
+    print(f"   - 匹配成功的收费项目数: {len(mapped_items)}")
+    
+    if mapped_items:
+        print(f"   ✅ 将优先使用匹配的 {len(mapped_items)} 个收费项目")
+        print(f"   示例匹配项目:")
+        for item in mapped_items[:3]:
+            print(f"      - {item.item_code}: {item.item_name}")
+        # 80% 使用映射的项目，20% 使用随机项目
+        use_mapped_ratio = 0.8
+    else:
+        print(f"   ⚠️  警告: 维度映射中的收费项目在系统中不存在")
+        print(f"   维度映射示例编码:")
+        for code in list(mapped_item_codes)[:5]:
+            print(f"      - {code}")
+        print(f"   系统收费项目示例编码:")
+        for item in charge_items[:5]:
+            print(f"      - {item.item_code}: {item.item_name}")
+        print(f"   ❌ 将使用随机收费项目（可能无法被 Step1 统计）")
+        mapped_items = charge_items
+        use_mapped_ratio = 0
+    
     records = []
     
     print(f"\n📝 生成 {record_count} 条收费记录...")
     
     for i in range(record_count):
-        # 随机选择科室和收费项目
+        # 随机选择科室
         dept = random.choice(departments)
-        item = random.choice(charge_items)
+        
+        # 优先选择映射的收费项目
+        if mapped_items and random.random() < use_mapped_ratio:
+            item = random.choice(mapped_items)
+        else:
+            item = random.choice(charge_items)
         
         # 随机选择患者
         patient_id = f"P{random.randint(1, patient_count):04d}"
@@ -176,6 +222,9 @@ def generate_charge_records(
         
         amount = unit_price * quantity
         
+        # 随机生成业务类别（70%门诊，30%住院）
+        business_type = '门诊' if random.random() < 0.7 else '住院'
+        
         record = {
             'patient_id': patient_id,
             'prescribing_dept_code': dept.his_code,
@@ -183,7 +232,8 @@ def generate_charge_records(
             'item_name': item.item_name,
             'amount': amount,
             'quantity': quantity,
-            'charge_time': charge_time
+            'charge_time': charge_time,
+            'business_type': business_type
         }
         
         records.append(record)
@@ -259,6 +309,58 @@ def generate_workload_statistics(
             'stat_value': participated
         })
     
+    # 护理床日统计（使用维度code作为stat_type）
+    bed_types = ['dim-nur-bed-3', 'dim-nur-bed-4', 'dim-nur-bed-5']
+    for dept in departments:
+        for bed_type in bed_types:
+            value = random.randint(20, 150)
+            records.append({
+                'department_code': dept.his_code,
+                'stat_month': period,
+                'stat_type': bed_type,
+                'stat_level': None,
+                'stat_value': value
+            })
+    
+    # 出入转院统计（使用维度code作为stat_type）
+    trans_types = ['dim-nur-trans-in', 'dim-nur-trans-out', 'dim-nur-trans-intraday']
+    for dept in departments:
+        for trans_type in trans_types:
+            value = random.randint(10, 100)
+            records.append({
+                'department_code': dept.his_code,
+                'stat_month': period,
+                'stat_type': trans_type,
+                'stat_level': None,
+                'stat_value': value
+            })
+    
+    # 手术管理统计（使用维度code作为stat_type）
+    op_types = ['dim-nur-op-3', 'dim-nur-op-4', 'dim-nur-op-acad', 'dim-nur-op-other']
+    for dept in departments:
+        for op_type in op_types:
+            value = random.randint(5, 50)
+            records.append({
+                'department_code': dept.his_code,
+                'stat_month': period,
+                'stat_type': op_type,
+                'stat_level': None,
+                'stat_value': value
+            })
+    
+    # 手术室护理统计（使用维度code作为stat_type）
+    or_types = ['dim-nur-or-large', 'dim-nur-or-mid', 'dim-nur-or-tiny']
+    for dept in departments:
+        for or_type in or_types:
+            value = random.randint(10, 80)
+            records.append({
+                'department_code': dept.his_code,
+                'stat_month': period,
+                'stat_type': or_type,
+                'stat_level': None,
+                'stat_value': value
+            })
+    
     print(f"✅ 生成 {len(records)} 条工作量统计记录")
     
     return records
@@ -269,7 +371,89 @@ def create_tables_if_not_exists(connection):
     
     print(f"\n🔧 检查并创建表...")
     
-    # 创建 charge_details 表
+    # 创建 TB_MZ_SFMXB 表（门诊收费明细表）
+    connection.execute(text("""
+        CREATE TABLE IF NOT EXISTS "TB_MZ_SFMXB" (
+            "YLJGDM" varchar(33),
+            "SFMXID" varchar(54),
+            "BRZSY" varchar(96),
+            "JZLSH" varchar(54),
+            "BTFMXID" varchar(54),
+            "TFBZ" varchar(2),
+            "SFCJBM" varchar(2),
+            "YZMXID" varchar(54),
+            "SFXMLBBM" varchar(6),
+            "FYSRGLBM" varchar(6),
+            "FYFSSJ" timestamp,
+            "SYJSID" varchar(54),
+            "SFJSSJ" timestamp,
+            "KDKSBM" varchar(54),
+            "KDKSMC" varchar(108),
+            "KDYSBH" varchar(54),
+            "KDYSXM" varchar(108),
+            "KDYSSFZHM" varchar(27),
+            "ZXKSBM" varchar(54),
+            "ZXKSMC" varchar(108),
+            "ZXRYBH" varchar(54),
+            "ZXRYXM" varchar(108),
+            "ZXRYSFZHM" varchar(27),
+            "SFXMBZBM" varchar(3),
+            "MXXMBM" varchar(54),
+            "MXXMMC" varchar(96),
+            "YNSFXMBM" varchar(75),
+            "YNSFXMMC" varchar(300),
+            "MXXMDW" varchar(18),
+            "XMFLBM" varchar(48),
+            "XMFLMC" varchar(96),
+            "MXXMDJ" numeric(10,4),
+            "MXXMSL" numeric(8,3),
+            "MXXMYSJE" numeric(10,4),
+            "MXXMSSJE" numeric(10,4),
+            "TBRQ" timestamp,
+            "XGBZ" varchar(2),
+            "YLYL1" varchar(192),
+            "YLYL2" varchar(192)
+        )
+    """))
+    
+    # 创建 TB_ZY_SFMXB 表（住院收费明细表）
+    connection.execute(text("""
+        CREATE TABLE IF NOT EXISTS "TB_ZY_SFMXB" (
+            "YLJGDM" varchar(33),
+            "SFMXID" varchar(54),
+            "TFBZ" varchar(2),
+            "JZLSH" varchar(75),
+            "BRZSY" varchar(96),
+            "YZMXID" varchar(54),
+            "KDKSBM" varchar(54),
+            "KDKSMC" varchar(108),
+            "KDYSBH" varchar(54),
+            "KDYSXM" varchar(108),
+            "ZXKSBM" varchar(54),
+            "ZXKSMC" varchar(108),
+            "ZXRYBH" varchar(54),
+            "ZXRYXM" varchar(108),
+            "SFXMLBBM" varchar(6),
+            "FYSRGLBM" varchar(6),
+            "FYFSSJ" timestamp,
+            "SFXMBZBM" varchar(3),
+            "MXXMBM" varchar(54),
+            "MXXMMC" varchar(96),
+            "XMFLBM" varchar(48),
+            "XMFLMC" varchar(96),
+            "MXXMDW" varchar(18),
+            "MXXMDJ" numeric(10,4),
+            "MXXMSL" numeric(9),
+            "MXXMYSJE" numeric(10,4),
+            "MXXMSSJE" numeric(10,4),
+            "TBRQ" timestamp,
+            "XGBZ" varchar(2),
+            "YLYL1" varchar(192),
+            "YLYL2" varchar(192)
+        )
+    """))
+    
+    # 创建 charge_details 表（用于步骤1生成）
     connection.execute(text("""
         CREATE TABLE IF NOT EXISTS charge_details (
             id SERIAL PRIMARY KEY,
@@ -280,6 +464,7 @@ def create_tables_if_not_exists(connection):
             amount DECIMAL(20, 4) NOT NULL DEFAULT 0,
             quantity DECIMAL(20, 4) NOT NULL DEFAULT 0,
             charge_time TIMESTAMP NOT NULL,
+            business_type VARCHAR(20),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """))
@@ -331,10 +516,10 @@ def create_tables_if_not_exists(connection):
     print(f"✅ 表检查完成")
 
 
-def insert_charge_records(connection, records: List[Dict[str, Any]], period: str):
-    """插入收费记录"""
+def insert_charge_records(connection, records: List[Dict[str, Any]], period: str, departments: List[Department]):
+    """插入收费记录到TB_MZ_SFMXB和TB_ZY_SFMXB"""
     
-    print(f"\n💾 插入收费记录...")
+    print(f"\n💾 插入收费记录到源表...")
     
     # 先删除该周期的旧数据
     year, month = period.split('-')
@@ -344,27 +529,99 @@ def insert_charge_records(connection, records: List[Dict[str, Any]], period: str
     else:
         end_date = f"{year}-{int(month)+1:02d}-01"
     
+    # 删除门诊表旧数据
     result = connection.execute(text("""
-        DELETE FROM charge_details 
-        WHERE charge_time >= :start_date 
-        AND charge_time < :end_date
+        DELETE FROM "TB_MZ_SFMXB" 
+        WHERE "FYFSSJ" >= :start_date 
+        AND "FYFSSJ" < :end_date
     """), {'start_date': start_date, 'end_date': end_date})
+    mz_deleted = result.rowcount
     
-    deleted_count = result.rowcount
-    if deleted_count > 0:
-        print(f"   删除了 {deleted_count} 条旧数据")
+    # 删除住院表旧数据
+    result = connection.execute(text("""
+        DELETE FROM "TB_ZY_SFMXB" 
+        WHERE "FYFSSJ" >= :start_date 
+        AND "FYFSSJ" < :end_date
+    """), {'start_date': start_date, 'end_date': end_date})
+    zy_deleted = result.rowcount
     
-    # 批量插入新数据
-    for record in records:
-        connection.execute(text("""
-            INSERT INTO charge_details 
-            (patient_id, prescribing_dept_code, item_code, item_name, amount, quantity, charge_time)
-            VALUES 
-            (:patient_id, :prescribing_dept_code, :item_code, :item_name, :amount, :quantity, :charge_time)
-        """), record)
+    if mz_deleted > 0 or zy_deleted > 0:
+        print(f"   删除了旧数据: 门诊 {mz_deleted} 条, 住院 {zy_deleted} 条")
+    
+    # 创建科室编码到名称的映射
+    dept_map = {dept.his_code: dept.his_name for dept in departments}
+    
+    # 分别插入门诊和住院数据
+    mz_count = 0
+    zy_count = 0
+    
+    for i, record in enumerate(records):
+        # 生成唯一的收费明细ID
+        sfmxid = f"SFMX{period.replace('-', '')}{i+1:06d}"
+        jzlsh = f"JZ{period.replace('-', '')}{record['patient_id']}"
+        dept_name = dept_map.get(record['prescribing_dept_code'], record['prescribing_dept_code'])
+        
+        if record['business_type'] == '门诊':
+            # 插入到门诊表
+            connection.execute(text("""
+                INSERT INTO "TB_MZ_SFMXB" 
+                ("YLJGDM", "SFMXID", "BRZSY", "JZLSH", "TFBZ", "FYFSSJ",
+                 "KDKSBM", "KDKSMC", "MXXMBM", "MXXMMC", 
+                 "MXXMDJ", "MXXMSL", "MXXMYSJE", "MXXMSSJE", "TBRQ")
+                VALUES 
+                (:yljgdm, :sfmxid, :brzsy, :jzlsh, :tfbz, :fyfssj,
+                 :kdksbm, :kdksmc, :mxxmbm, :mxxmmc,
+                 :mxxmdj, :mxxmsl, :mxxmysje, :mxxmssje, :tbrq)
+            """), {
+                'yljgdm': 'HOSPITAL001',
+                'sfmxid': sfmxid,
+                'brzsy': record['patient_id'],
+                'jzlsh': jzlsh,
+                'tfbz': '0',  # 非退费
+                'fyfssj': record['charge_time'],
+                'kdksbm': record['prescribing_dept_code'],
+                'kdksmc': dept_name,
+                'mxxmbm': record['item_code'],
+                'mxxmmc': record['item_name'],
+                'mxxmdj': record['amount'] / record['quantity'],
+                'mxxmsl': record['quantity'],
+                'mxxmysje': record['amount'],
+                'mxxmssje': record['amount'],
+                'tbrq': datetime.now()
+            })
+            mz_count += 1
+        else:
+            # 插入到住院表
+            connection.execute(text("""
+                INSERT INTO "TB_ZY_SFMXB" 
+                ("YLJGDM", "SFMXID", "BRZSY", "JZLSH", "TFBZ", "FYFSSJ",
+                 "KDKSBM", "KDKSMC", "MXXMBM", "MXXMMC",
+                 "MXXMDJ", "MXXMSL", "MXXMYSJE", "MXXMSSJE", "TBRQ")
+                VALUES 
+                (:yljgdm, :sfmxid, :brzsy, :jzlsh, :tfbz, :fyfssj,
+                 :kdksbm, :kdksmc, :mxxmbm, :mxxmmc,
+                 :mxxmdj, :mxxmsl, :mxxmysje, :mxxmssje, :tbrq)
+            """), {
+                'yljgdm': 'HOSPITAL001',
+                'sfmxid': sfmxid,
+                'brzsy': record['patient_id'],
+                'jzlsh': jzlsh,
+                'tfbz': '0',  # 非退费
+                'fyfssj': record['charge_time'],
+                'kdksbm': record['prescribing_dept_code'],
+                'kdksmc': dept_name,
+                'mxxmbm': record['item_code'],
+                'mxxmmc': record['item_name'],
+                'mxxmdj': record['amount'] / record['quantity'],
+                'mxxmsl': record['quantity'],
+                'mxxmysje': record['amount'],
+                'mxxmssje': record['amount'],
+                'tbrq': datetime.now()
+            })
+            zy_count += 1
     
     connection.commit()
-    print(f"✅ 插入了 {len(records)} 条收费记录")
+    print(f"✅ 插入完成: 门诊 {mz_count} 条, 住院 {zy_count} 条")
 
 
 def insert_workload_statistics(connection, records: List[Dict[str, Any]], period: str):
@@ -407,27 +664,62 @@ def verify_data(connection, period: str):
     start_date = f"{period}-01"
     end_date = f"{period}-{last_day}"
     
-    # 验证收费记录
+    # 验证门诊收费记录
     result = connection.execute(text("""
         SELECT 
-            prescribing_dept_code,
+            "KDKSBM" as dept_code,
             COUNT(*) as record_count,
-            COUNT(DISTINCT patient_id) as patient_count,
-            SUM(amount) as total_amount
-        FROM charge_details
-        WHERE charge_time >= :start_date 
-        AND charge_time <= :end_date
-        GROUP BY prescribing_dept_code
-        ORDER BY prescribing_dept_code
+            COUNT(DISTINCT "BRZSY") as patient_count,
+            SUM("MXXMSSJE") as total_amount
+        FROM "TB_MZ_SFMXB"
+        WHERE "FYFSSJ" >= :start_date 
+        AND "FYFSSJ" <= :end_date
+        GROUP BY "KDKSBM"
+        ORDER BY "KDKSBM"
     """), {
         'start_date': start_date,
         'end_date': end_date + ' 23:59:59'
     })
     
-    print(f"\n收费明细汇总:")
+    print(f"\n门诊收费明细汇总:")
+    mz_total_records = 0
+    mz_total_amount = 0
     for row in result:
-        print(f"  {row.prescribing_dept_code}: {row.record_count} 条记录, "
-              f"{row.patient_count} 个患者, 总金额 {float(row.total_amount):.2f} 元")
+        mz_total_records += row.record_count
+        mz_total_amount += float(row.total_amount or 0)
+        print(f"  {row.dept_code}: {row.record_count} 条记录, "
+              f"{row.patient_count} 个患者, 总金额 {float(row.total_amount or 0):.2f} 元")
+    print(f"  合计: {mz_total_records} 条记录, 总金额 {mz_total_amount:.2f} 元")
+    
+    # 验证住院收费记录
+    result = connection.execute(text("""
+        SELECT 
+            "KDKSBM" as dept_code,
+            COUNT(*) as record_count,
+            COUNT(DISTINCT "BRZSY") as patient_count,
+            SUM("MXXMSSJE") as total_amount
+        FROM "TB_ZY_SFMXB"
+        WHERE "FYFSSJ" >= :start_date 
+        AND "FYFSSJ" <= :end_date
+        GROUP BY "KDKSBM"
+        ORDER BY "KDKSBM"
+    """), {
+        'start_date': start_date,
+        'end_date': end_date + ' 23:59:59'
+    })
+    
+    print(f"\n住院收费明细汇总:")
+    zy_total_records = 0
+    zy_total_amount = 0
+    for row in result:
+        zy_total_records += row.record_count
+        zy_total_amount += float(row.total_amount or 0)
+        print(f"  {row.dept_code}: {row.record_count} 条记录, "
+              f"{row.patient_count} 个患者, 总金额 {float(row.total_amount or 0):.2f} 元")
+    print(f"  合计: {zy_total_records} 条记录, 总金额 {zy_total_amount:.2f} 元")
+    
+    print(f"\n总计: {mz_total_records + zy_total_records} 条记录, "
+          f"总金额 {mz_total_amount + zy_total_amount:.2f} 元")
     
     # 验证工作量统计
     result = connection.execute(text("""
@@ -486,7 +778,7 @@ def main():
         # 5. 生成测试数据
         print(f"\n📋 步骤 5/6: 生成测试数据")
         charge_records = generate_charge_records(
-            departments, charge_items, args.period, 
+            departments, charge_items, mappings, args.period, 
             args.record_count, args.patient_count
         )
         workload_records = generate_workload_statistics(departments, args.period)
@@ -511,7 +803,7 @@ def main():
             create_tables_if_not_exists(connection)
             
             # 插入数据
-            insert_charge_records(connection, charge_records, args.period)
+            insert_charge_records(connection, charge_records, args.period, departments)
             insert_workload_statistics(connection, workload_records, args.period)
             
             # 验证数据
@@ -520,11 +812,17 @@ def main():
         print(f"\n" + "=" * 80)
         print(f"✅ 测试数据生成完成!")
         print(f"=" * 80)
+        print(f"\n数据已插入到源表:")
+        print(f"  - TB_MZ_SFMXB (门诊收费明细表)")
+        print(f"  - TB_ZY_SFMXB (住院收费明细表)")
+        print(f"  - workload_statistics (工作量统计表)")
         print(f"\n下一步:")
         print(f"  1. 在前端创建计算任务")
         print(f"  2. 选择医疗机构 {args.hospital_id}")
         print(f"  3. 选择周期 {args.period}")
-        print(f"  4. 运行标准计算流程")
+        print(f"  4. 运行标准计算流程（包含步骤1：数据准备）")
+        print(f"     - 步骤1会从TB_MZ_SFMXB和TB_ZY_SFMXB生成charge_details")
+        print(f"     - 步骤2-4会基于charge_details进行计算")
         
     except Exception as e:
         print(f"\n❌ 错误: {str(e)}")

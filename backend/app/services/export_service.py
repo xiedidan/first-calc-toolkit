@@ -14,7 +14,7 @@ class ExportService:
     """报表导出服务"""
     
     @staticmethod
-    def export_summary_to_excel(summary_data: dict, period: str) -> BytesIO:
+    def export_summary_to_excel(summary_data: dict, period: str, hospital_name: str = None) -> BytesIO:
         """
         导出汇总表到Excel
         
@@ -30,20 +30,21 @@ class ExportService:
         ws.title = "汇总表"
         
         # 设置列宽（增加10%）
-        ws.column_dimensions['A'].width = 22  # 科室 (20 * 1.1)
-        ws.column_dimensions['B'].width = 16.5  # 医生价值 (15 * 1.1)
-        ws.column_dimensions['C'].width = 13  # 医生占比 (12 * 1.1)
-        ws.column_dimensions['D'].width = 16.5  # 护理价值 (15 * 1.1)
-        ws.column_dimensions['E'].width = 13  # 护理占比 (12 * 1.1)
-        ws.column_dimensions['F'].width = 16.5  # 医技价值 (15 * 1.1)
-        ws.column_dimensions['G'].width = 13  # 医技占比 (12 * 1.1)
-        ws.column_dimensions['H'].width = 20  # 科室总价值 (18 * 1.1)
+        ws.column_dimensions['A'].width = 15  # 科室代码
+        ws.column_dimensions['B'].width = 22  # 科室名称 (20 * 1.1)
+        ws.column_dimensions['C'].width = 16.5  # 医生价值 (15 * 1.1)
+        ws.column_dimensions['D'].width = 13  # 医生占比 (12 * 1.1)
+        ws.column_dimensions['E'].width = 16.5  # 护理价值 (15 * 1.1)
+        ws.column_dimensions['F'].width = 13  # 护理占比 (12 * 1.1)
+        ws.column_dimensions['G'].width = 16.5  # 医技价值 (15 * 1.1)
+        ws.column_dimensions['H'].width = 13  # 医技占比 (12 * 1.1)
+        ws.column_dimensions['I'].width = 20  # 科室总价值 (18 * 1.1)
         
         # 标题行
         title_cell = ws.cell(row=1, column=1, value=f"科室业务价值汇总（{period}）")
         title_cell.font = Font(name='微软雅黑', size=14, bold=True)
         title_cell.alignment = Alignment(horizontal='center', vertical='center')
-        ws.merge_cells('A1:H1')
+        ws.merge_cells('A1:I1')
         ws.row_dimensions[1].height = 30
         
         # 表头样式
@@ -59,33 +60,36 @@ class ExportService:
         
         # 第一层表头（序列分组）
         row = 2
-        ws.merge_cells(f'A{row}:A{row+1}')  # 科室
-        ws.cell(row=row, column=1, value='科室')
+        ws.merge_cells(f'A{row}:A{row+1}')  # 科室代码
+        ws.cell(row=row, column=1, value='科室代码')
         
-        ws.merge_cells(f'B{row}:C{row}')  # 医生序列
-        ws.cell(row=row, column=2, value='医生序列')
+        ws.merge_cells(f'B{row}:B{row+1}')  # 科室名称
+        ws.cell(row=row, column=2, value='科室名称')
         
-        ws.merge_cells(f'D{row}:E{row}')  # 护理序列
-        ws.cell(row=row, column=4, value='护理序列')
+        ws.merge_cells(f'C{row}:D{row}')  # 医生序列
+        ws.cell(row=row, column=3, value='医生序列')
         
-        ws.merge_cells(f'F{row}:G{row}')  # 医技序列
-        ws.cell(row=row, column=6, value='医技序列')
+        ws.merge_cells(f'E{row}:F{row}')  # 护理序列
+        ws.cell(row=row, column=5, value='护理序列')
         
-        ws.merge_cells(f'H{row}:H{row+1}')  # 科室总价值
-        ws.cell(row=row, column=8, value='科室总价值')
+        ws.merge_cells(f'G{row}:H{row}')  # 医技序列
+        ws.cell(row=row, column=7, value='医技序列')
+        
+        ws.merge_cells(f'I{row}:I{row+1}')  # 科室总价值
+        ws.cell(row=row, column=9, value='科室总价值')
         
         # 第二层表头（价值/占比）
         row = 3
-        ws.cell(row=row, column=2, value='价值')
-        ws.cell(row=row, column=3, value='占比')
-        ws.cell(row=row, column=4, value='价值')
-        ws.cell(row=row, column=5, value='占比')
-        ws.cell(row=row, column=6, value='价值')
-        ws.cell(row=row, column=7, value='占比')
+        ws.cell(row=row, column=3, value='价值')
+        ws.cell(row=row, column=4, value='占比')
+        ws.cell(row=row, column=5, value='价值')
+        ws.cell(row=row, column=6, value='占比')
+        ws.cell(row=row, column=7, value='价值')
+        ws.cell(row=row, column=8, value='占比')
         
         # 应用表头样式
         for r in [2, 3]:
-            for c in range(1, 9):
+            for c in range(1, 10):
                 cell = ws.cell(row=r, column=c)
                 cell.font = header_font
                 cell.fill = header_fill
@@ -112,25 +116,26 @@ class ExportService:
         
         # 全院汇总行
         summary = summary_data['summary']
-        ws.cell(row=row, column=1, value=summary['department_name'])
-        ws.cell(row=row, column=2, value=float(summary['doctor_value']))
-        ws.cell(row=row, column=3, value=float(summary['doctor_ratio']) / 100)
-        ws.cell(row=row, column=4, value=float(summary['nurse_value']))
-        ws.cell(row=row, column=5, value=float(summary['nurse_ratio']) / 100)
-        ws.cell(row=row, column=6, value=float(summary['tech_value']))
-        ws.cell(row=row, column=7, value=float(summary['tech_ratio']) / 100)
-        ws.cell(row=row, column=8, value=float(summary['total_value']))
+        ws.cell(row=row, column=1, value=summary.get('department_code') or '')
+        ws.cell(row=row, column=2, value=summary['department_name'])
+        ws.cell(row=row, column=3, value=float(summary['doctor_value']))
+        ws.cell(row=row, column=4, value=float(summary['doctor_ratio']) / 100)
+        ws.cell(row=row, column=5, value=float(summary['nurse_value']))
+        ws.cell(row=row, column=6, value=float(summary['nurse_ratio']) / 100)
+        ws.cell(row=row, column=7, value=float(summary['tech_value']))
+        ws.cell(row=row, column=8, value=float(summary['tech_ratio']) / 100)
+        ws.cell(row=row, column=9, value=float(summary['total_value']))
         
         # 应用全院汇总样式
-        for c in range(1, 9):
+        for c in range(1, 10):
             cell = ws.cell(row=row, column=c)
             cell.font = summary_font
             cell.fill = summary_fill
             cell.border = border
             
-            if c == 1:
+            if c in [1, 2]:
                 cell.alignment = data_alignment_left
-            elif c in [3, 5, 7]:  # 占比列
+            elif c in [4, 6, 8]:  # 占比列
                 cell.alignment = data_alignment_center
                 cell.number_format = '0.00%'
             else:  # 价值列
@@ -142,24 +147,25 @@ class ExportService:
         
         # 各科室数据行
         for dept in summary_data['departments']:
-            ws.cell(row=row, column=1, value=dept['department_name'])
-            ws.cell(row=row, column=2, value=float(dept['doctor_value']))
-            ws.cell(row=row, column=3, value=float(dept['doctor_ratio']) / 100)
-            ws.cell(row=row, column=4, value=float(dept['nurse_value']))
-            ws.cell(row=row, column=5, value=float(dept['nurse_ratio']) / 100)
-            ws.cell(row=row, column=6, value=float(dept['tech_value']))
-            ws.cell(row=row, column=7, value=float(dept['tech_ratio']) / 100)
-            ws.cell(row=row, column=8, value=float(dept['total_value']))
+            ws.cell(row=row, column=1, value=dept.get('department_code') or '')
+            ws.cell(row=row, column=2, value=dept['department_name'])
+            ws.cell(row=row, column=3, value=float(dept['doctor_value']))
+            ws.cell(row=row, column=4, value=float(dept['doctor_ratio']) / 100)
+            ws.cell(row=row, column=5, value=float(dept['nurse_value']))
+            ws.cell(row=row, column=6, value=float(dept['nurse_ratio']) / 100)
+            ws.cell(row=row, column=7, value=float(dept['tech_value']))
+            ws.cell(row=row, column=8, value=float(dept['tech_ratio']) / 100)
+            ws.cell(row=row, column=9, value=float(dept['total_value']))
             
             # 应用普通数据样式
-            for c in range(1, 9):
+            for c in range(1, 10):
                 cell = ws.cell(row=row, column=c)
                 cell.font = normal_font
                 cell.border = border
                 
-                if c == 1:
+                if c in [1, 2]:
                     cell.alignment = data_alignment_left
-                elif c in [3, 5, 7]:  # 占比列
+                elif c in [4, 6, 8]:  # 占比列
                     cell.alignment = data_alignment_center
                     cell.number_format = '0.00%'
                 else:  # 价值列
@@ -177,7 +183,7 @@ class ExportService:
         return output
     
     @staticmethod
-    def export_detail_to_excel(dept_name: str, period: str, detail_data: Dict[str, List[Dict]]) -> BytesIO:
+    def export_detail_to_excel(dept_name: str, period: str, detail_data: Dict[str, List[Dict]], hospital_name: str = None) -> BytesIO:
         """
         导出单个科室的明细表到Excel
         
@@ -233,10 +239,10 @@ class ExportService:
             # 设置列宽
             ws.column_dimensions['A'].width = 33  # 维度名称
             ws.column_dimensions['B'].width = 13  # 工作量
-            ws.column_dimensions['C'].width = 13  # 全院业务价值
+            ws.column_dimensions['C'].width = 16  # 全院业务价值
             ws.column_dimensions['D'].width = 27  # 业务导向（增加50%：18 * 1.5）
-            ws.column_dimensions['E'].width = 13  # 科室业务价值
-            ws.column_dimensions['F'].width = 13  # 业务价值金额
+            ws.column_dimensions['E'].width = 16  # 科室业务价值
+            ws.column_dimensions['F'].width = 16  # 业务价值金额
             
             # 标题行
             title_text = f"{dept_name} - {seq_name}业务价值明细（{period}）"
@@ -319,7 +325,7 @@ class ExportService:
         return output
     
     @staticmethod
-    def export_all_details_to_zip(period: str, departments_data: List[Dict[str, Any]]) -> BytesIO:
+    def export_all_details_to_zip(period: str, departments_data: List[Dict[str, Any]], hospital_name: str = None) -> BytesIO:
         """
         导出所有科室的明细表，打包成ZIP
         
@@ -327,6 +333,7 @@ class ExportService:
             period: 评估月份
             departments_data: 所有科室的明细数据列表
                 每个元素包含：dept_name, doctor, nurse, tech
+            hospital_name: 医院名称
             
         Returns:
             BytesIO: ZIP文件的字节流
@@ -344,10 +351,13 @@ class ExportService:
                     'tech': dept_data.get('tech', [])
                 }
                 
-                excel_file = ExportService.export_detail_to_excel(dept_name, period, detail_data)
+                excel_file = ExportService.export_detail_to_excel(dept_name, period, detail_data, hospital_name)
                 
-                # 添加到ZIP
-                filename = f"{dept_name}_业务价值明细_{period}.xlsx"
+                # 添加到ZIP（医院名称_科室名称_业务价值明细_期间.xlsx）
+                if hospital_name:
+                    filename = f"{hospital_name}_{dept_name}_业务价值明细_{period}.xlsx"
+                else:
+                    filename = f"{dept_name}_业务价值明细_{period}.xlsx"
                 zip_file.writestr(filename, excel_file.getvalue())
         
         zip_buffer.seek(0)

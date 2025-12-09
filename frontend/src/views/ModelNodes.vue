@@ -26,6 +26,7 @@
         v-loading="loading"
         :tree-props="{ children: 'children', hasChildren: 'hasChildren' }"
         default-expand-all
+
       >
         <el-table-column label="节点名称" width="460">
           <template #default="{ row }">
@@ -56,7 +57,10 @@
         </el-table-column>
         <el-table-column label="业务导向" min-width="600" show-overflow-tooltip>
           <template #default="{ row }">
-            {{ row.is_leaf && row.business_guide ? row.business_guide : '-' }}
+            <span v-if="row.is_leaf && row.orientation_rule_names && row.orientation_rule_names.length > 0">
+              {{ row.orientation_rule_names.join(', ') }}
+            </span>
+            <span v-else>-</span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="250" fixed="right" align="center">
@@ -87,7 +91,7 @@
       v-model="dialogVisible"
       :title="dialogTitle"
       width="800px"
-      custom-class="full-height-dialog"
+      append-to-body
       @close="handleDialogClose"
     >
       <el-form :model="form" :rules="rules" ref="formRef" label-width="120px">
@@ -176,13 +180,27 @@
           </el-col>
         </el-row>
 
-        <el-form-item label="业务导向" prop="business_guide" v-if="form.is_leaf">
-          <el-input 
-            v-model="form.business_guide" 
-            type="textarea" 
-            :rows="3"
-            placeholder="请输入业务导向说明"
-          />
+        <el-form-item label="业务导向" prop="orientation_rule_ids" v-if="form.is_leaf">
+          <el-select 
+            v-model="form.orientation_rule_ids" 
+            placeholder="请选择导向规则（可多选）"
+            clearable
+            filterable
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
+            style="width: 100%"
+          >
+            <el-option
+              v-for="rule in orientationRules"
+              :key="rule.id"
+              :label="rule.name"
+              :value="rule.id"
+            />
+          </el-select>
+          <el-text type="info" size="small" style="margin-top: 4px">
+            可选择多个导向规则，或不选择任何规则
+          </el-text>
         </el-form-item>
 
         <el-form-item label="规则说明" prop="rule">
@@ -224,7 +242,7 @@
       v-model="testResultVisible"
       title="测试结果"
       width="700px"
-      custom-class="full-height-dialog"
+      append-to-body
     >
       <el-alert
         :title="testResult.success ? '测试成功' : '测试失败'"
@@ -262,6 +280,7 @@ import {
   type ModelVersion,
   type ModelNode
 } from '@/api/model'
+import { getOrientationRules, type OrientationRule } from '@/api/orientation'
 
 const router = useRouter()
 const route = useRoute()
@@ -274,6 +293,9 @@ const versionInfo = ref<ModelVersion>()
 // 表格数据
 const tableData = ref<ModelNode[]>([])
 const loading = ref(false)
+
+// 导向规则列表
+const orientationRules = ref<OrientationRule[]>([])
 
 // 对话框
 const dialogVisible = ref(false)
@@ -294,7 +316,7 @@ const form = reactive({
   calc_type: 'calculational' as 'statistical' | 'calculational' | undefined,
   weight: undefined as number | undefined,
   unit: '%',
-  business_guide: '',
+  orientation_rule_ids: [] as number[],
   rule: '',
   script: ''
 })
@@ -351,6 +373,17 @@ const fetchData = async () => {
   }
 }
 
+// 获取导向规则列表
+const fetchOrientationRules = async () => {
+  try {
+    const res = await getOrientationRules({ limit: 1000 })
+    orientationRules.value = res.items
+  } catch (error) {
+    console.error('获取导向规则列表失败:', error)
+    // 不显示错误消息，因为这不是关键功能
+  }
+}
+
 // 返回
 const handleBack = () => {
   router.push({ name: 'ModelVersions' })
@@ -372,7 +405,7 @@ const handleAddRoot = () => {
     calc_type: 'calculational',
     weight: undefined,
     unit: '%',
-    business_guide: '',
+    orientation_rule_ids: [],
     rule: '',
     script: ''
   })
@@ -395,7 +428,7 @@ const handleAddChild = (row: ModelNode) => {
     calc_type: 'calculational',
     weight: undefined,
     unit: '%',
-    business_guide: '',
+    orientation_rule_ids: [],
     rule: '',
     script: ''
   })
@@ -443,7 +476,7 @@ const handleEdit = (row: ModelNode) => {
     calc_type: row.calc_type,
     weight: convertWeightForEdit(row.weight, row.unit),
     unit: row.unit || '%',
-    business_guide: row.business_guide || '',
+    orientation_rule_ids: row.orientation_rule_ids || [],
     rule: row.rule || '',
     script: row.script || ''
   })
@@ -515,7 +548,7 @@ const handleSubmit = async () => {
         calc_type: form.calc_type,
         weight: convertWeightForSave(form.weight, form.unit),
         unit: form.unit,
-        business_guide: form.business_guide,
+        orientation_rule_ids: form.orientation_rule_ids || [],
         rule: form.rule,
         script: form.script
       }
@@ -560,9 +593,12 @@ const getNodeLevel = (node: ModelNode): number => {
   return findLevel(tableData.value, node.id)
 }
 
+
+
 onMounted(() => {
   fetchVersionInfo()
   fetchData()
+  fetchOrientationRules()
 })
 </script>
 

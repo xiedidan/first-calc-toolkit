@@ -10,6 +10,25 @@ echo "  导入Docker镜像"
 echo "=========================================="
 echo ""
 
+# 检查Docker是否运行
+echo ">>> 检查Docker环境..."
+if ! docker version &> /dev/null; then
+    echo "✗ Docker未运行或无权限访问"
+    echo ""
+    echo "可能的解决方案："
+    echo "1. 启动Docker服务："
+    echo "   sudo systemctl start docker"
+    echo ""
+    echo "2. 将当前用户添加到docker组（需要重新登录）："
+    echo "   sudo usermod -aG docker \$USER"
+    echo ""
+    echo "3. 使用sudo运行此脚本："
+    echo "   sudo bash scripts/load-images.sh"
+    exit 1
+fi
+echo "✓ Docker运行正常"
+echo ""
+
 IMAGES_DIR="./images"
 
 if [ ! -d "$IMAGES_DIR" ]; then

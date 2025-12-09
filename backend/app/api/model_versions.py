@@ -360,6 +360,7 @@ def _copy_node_recursive(db: Session, source_node: ModelNode, target_version_id:
         business_guide=source_node.business_guide,
         script=source_node.script,
         rule=source_node.rule,
+        orientation_rule_ids=source_node.orientation_rule_ids,  # 复制导向规则ID列表
     )
     db.add(new_node)
     db.flush()  # 获取新节点的ID

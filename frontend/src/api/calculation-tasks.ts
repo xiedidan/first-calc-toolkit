@@ -37,6 +37,7 @@ export function getCalculationTasks(params: {
   size?: number
   status?: string
   model_version_id?: number
+  period?: string
 }) {
   return request({
     url: '/calculation/tasks',

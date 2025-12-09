@@ -103,7 +103,7 @@
       v-model="editDialogVisible"
       :title="editForm.id ? '编辑数据模板' : '新建数据模板'"
       width="600px"
-      custom-class="full-height-dialog"
+      append-to-body
       @close="handleEditDialogClose"
     >
       <el-form
@@ -202,7 +202,7 @@
       v-model="batchUploadDialogVisible"
       title="批量上传数据模板"
       width="800px"
-      custom-class="full-height-dialog"
+      append-to-body
       @close="handleBatchUploadDialogClose"
     >
       <el-steps :active="batchUploadStep" finish-status="success" align-center>
@@ -333,7 +333,7 @@
       v-model="copyDialogVisible"
       title="复制数据模板"
       width="900px"
-      custom-class="full-height-dialog"
+      append-to-body
       @close="handleCopyDialogClose"
     >
       <el-steps :active="copyStep" finish-status="success" align-center>

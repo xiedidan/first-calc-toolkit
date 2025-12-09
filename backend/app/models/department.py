@@ -4,6 +4,7 @@
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Numeric, ForeignKey
 from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import ARRAY
 from app.database import Base
 
 
@@ -20,9 +21,11 @@ class Department(Base):
     cost_center_name = Column(String(100), comment="成本中心名称")
     accounting_unit_code = Column(String(50), comment="核算单元代码")
     accounting_unit_name = Column(String(100), comment="核算单元名称")
+    accounting_sequences = Column(ARRAY(String(20)), comment="核算序列（可多选：医生、护理、医技）")
     is_active = Column(Boolean, default=True, nullable=False, comment="是否参与评估")
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationships
     hospital = relationship("Hospital", back_populates="departments")
+    analysis_reports = relationship("AnalysisReport", back_populates="department")

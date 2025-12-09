@@ -14,6 +14,18 @@ if (-not (Test-Path "backend")) {
 # Environment name
 $envName = "hospital-backend"
 
+# Initialize Conda
+$condaPath = "C:\software\anaconda3"
+$condaHook = "$condaPath\shell\condabin\conda-hook.ps1"
+
+if (Test-Path $condaHook) {
+    Write-Host "Initializing Conda..." -ForegroundColor Yellow
+    & $condaHook
+} else {
+    Write-Host "ERROR: Conda hook not found at $condaHook" -ForegroundColor Red
+    exit 1
+}
+
 # Check if conda environment exists
 Write-Host "Checking Conda environment: $envName" -ForegroundColor Yellow
 $envExists = conda env list | Select-String -Pattern $envName
@@ -49,11 +61,14 @@ if (-not $dbCheck) {
 
 # Start FastAPI using conda run
 Write-Host ""
-Write-Host "Starting FastAPI service..." -ForegroundColor Green
+Write-Host "Starting FastAPI service with DEBUG logging..." -ForegroundColor Green
 Write-Host "Access URL: http://localhost:8000" -ForegroundColor Cyan
 Write-Host "API Docs: http://localhost:8000/docs" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Press Ctrl+C to stop the service" -ForegroundColor Yellow
 Write-Host ""
 
-conda run -n $envName --no-capture-output uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+# Set log level to DEBUG
+$env:LOG_LEVEL = "DEBUG"
+
+conda run -n $envName --no-capture-output uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --log-level debug

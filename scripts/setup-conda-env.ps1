@@ -5,17 +5,19 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Setup Conda Environment" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
-# Check if conda is installed
-$condaCheck = Get-Command conda -ErrorAction SilentlyContinue
-if (-not $condaCheck) {
-    Write-Host "ERROR: conda command not found" -ForegroundColor Red
-    Write-Host "Please make sure Anaconda is installed correctly" -ForegroundColor Yellow
-    Write-Host "" 
-    Write-Host "See CONDA_SETUP.md for configuration guide" -ForegroundColor Yellow
+# Initialize Conda for PowerShell
+$condaPath = "C:\software\anaconda3"
+$condaHook = "$condaPath\shell\condabin\conda-hook.ps1"
+
+if (Test-Path $condaHook) {
+    Write-Host "Initializing Conda..." -ForegroundColor Yellow
+    & $condaHook
+    Write-Host "Conda initialized" -ForegroundColor Green
+} else {
+    Write-Host "ERROR: Conda not found at $condaPath" -ForegroundColor Red
+    Write-Host "Please update the path in this script" -ForegroundColor Yellow
     exit 1
 }
-
-Write-Host "Conda is installed" -ForegroundColor Green
 
 # Environment name
 $envName = "hospital-backend"

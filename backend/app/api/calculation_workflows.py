@@ -225,7 +225,7 @@ def copy_calculation_workflow(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """复制计算流程（包括所有步骤）"""
+    """复制计算流程（包括所有步骤）到指定版本或原版本"""
     # 获取原流程
     source_workflow = db.query(CalculationWorkflow).filter(CalculationWorkflow.id == workflow_id).first()
     if not source_workflow:
@@ -237,20 +237,35 @@ def copy_calculation_workflow(
     # 验证流程所属的版本是否属于当前医疗机构
     validate_hospital_access(db, source_workflow.version)
     
-    # 检查新名称是否重复
+    # 确定目标版本ID
+    target_version_id = copy_request.target_version_id or source_workflow.version_id
+    
+    # 如果指定了目标版本，验证目标版本存在且属于当前医疗机构
+    if copy_request.target_version_id:
+        query = db.query(ModelVersion).filter(ModelVersion.id == target_version_id)
+        query = apply_hospital_filter(query, ModelVersion, required=True)
+        target_version = query.first()
+        if not target_version:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="目标模型版本不存在"
+            )
+        validate_hospital_access(db, target_version)
+    
+    # 检查新名称在目标版本下是否重复
     existing = db.query(CalculationWorkflow).filter(
-        CalculationWorkflow.version_id == source_workflow.version_id,
+        CalculationWorkflow.version_id == target_version_id,
         CalculationWorkflow.name == copy_request.name
     ).first()
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="该版本下已存在同名流程"
+            detail="目标版本下已存在同名流程"
         )
     
     # 创建新流程
     new_workflow = CalculationWorkflow(
-        version_id=source_workflow.version_id,
+        version_id=target_version_id,
         name=copy_request.name,
         description=copy_request.description or source_workflow.description,
         is_active=source_workflow.is_active
@@ -271,6 +286,7 @@ def copy_calculation_workflow(
             description=source_step.description,
             code_type=source_step.code_type,
             code_content=source_step.code_content,
+            data_source_id=source_step.data_source_id,  # 复制数据源关联
             sort_order=source_step.sort_order,
             is_enabled=source_step.is_enabled
         )

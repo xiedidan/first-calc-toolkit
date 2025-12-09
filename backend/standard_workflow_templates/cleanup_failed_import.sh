@@ -25,7 +25,17 @@ psql -h "$DATABASE_HOST" -p "$DATABASE_PORT" -U "$DATABASE_USER" -d "$DATABASE_N
     "SELECT id, name, created_at FROM calculation_workflows ORDER BY created_at DESC LIMIT 5;"
 
 echo ""
-echo "如果需要删除某个流程,请执行:"
-echo "psql -h $DATABASE_HOST -p $DATABASE_PORT -U $DATABASE_USER -d $DATABASE_NAME -c \"DELETE FROM calculation_workflows WHERE id = <ID>;\""
+echo "=========================================="
+echo "删除流程的方法:"
+echo "=========================================="
+echo ""
+echo "快速删除指定流程 (推荐):"
+echo "--------------------------------------"
+echo "bash delete_workflow.sh <WORKFLOW_ID>"
+echo ""
+echo "示例:"
+echo "  bash delete_workflow.sh 13    # 删除 workflow_id=13"
+echo "  bash delete_workflow.sh 14    # 删除 workflow_id=14"
+echo ""
 
 unset PGPASSWORD

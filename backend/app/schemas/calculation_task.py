@@ -23,6 +23,7 @@ class CalculationTaskResponse(BaseModel):
     task_id: str
     model_version_id: int
     workflow_id: Optional[int]
+    workflow_name: Optional[str] = None
     period: str
     status: str
     progress: Decimal
@@ -71,6 +72,8 @@ class DimensionDetail(BaseModel):
     ratio: Decimal
     workload: Optional[Decimal]
     weight: Optional[Decimal]
+    hospital_value: Optional[Decimal]  # 全院业务价值（原始weight）
+    dept_value: Optional[Decimal]  # 科室业务价值（调整后weight）
     business_guide: Optional[str]  # 业务导向
     children: List['DimensionDetail'] = []  # 子维度
 
@@ -126,6 +129,7 @@ class DepartmentDetailResponse(BaseModel):
 class CalculationSummaryResponse(BaseModel):
     """计算结果汇总响应"""
     department_id: int
+    department_code: Optional[str] = None  # 科室代码（核算单元代码）
     department_name: str
     doctor_value: Decimal
     doctor_ratio: Decimal
@@ -163,3 +167,43 @@ class ExportTaskResponse(BaseModel):
     """导出任务响应"""
     task_id: str
     download_url: Optional[str] = None
+
+
+# 导向汇总相关
+class OrientationAdjustmentDetailResponse(BaseModel):
+    """导向调整明细响应"""
+    id: int
+    department_name: str
+    node_code: str
+    node_name: str
+    orientation_rule_name: str
+    orientation_type: str
+    actual_value: Optional[Decimal]
+    benchmark_value: Optional[Decimal]
+    orientation_ratio: Optional[Decimal]
+    ladder_lower_limit: Optional[Decimal]
+    ladder_upper_limit: Optional[Decimal]
+    adjustment_intensity: Optional[Decimal]
+    original_weight: Decimal
+    adjusted_weight: Optional[Decimal]
+    is_adjusted: bool
+    adjustment_reason: Optional[str]
+
+    model_config = {"from_attributes": True}
+
+
+class OrientationAdjustmentListResponse(BaseModel):
+    """导向调整明细列表响应"""
+    total: int
+    items: List[OrientationAdjustmentDetailResponse]
+
+
+class OrientationSummaryResponse(BaseModel):
+    """导向汇总响应 - 按序列分组"""
+    task_id: str
+    department_id: int
+    department_name: str
+    period: str
+    doctor: List[OrientationAdjustmentDetailResponse]
+    nurse: List[OrientationAdjustmentDetailResponse]
+    tech: List[OrientationAdjustmentDetailResponse]

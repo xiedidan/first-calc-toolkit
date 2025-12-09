@@ -3,7 +3,7 @@
     v-model="visible"
     title="维度目录智能导入"
     width="90%"
-    custom-class="full-height-dialog"
+    append-to-body
     :close-on-click-modal="false"
     @close="handleClose"
   >
@@ -570,7 +570,8 @@ const handleExecute = async () => {
   loading.value = true
   try {
     const result = await executeImport({
-      session_id: parseResult.value!.session_id
+      session_id: parseResult.value!.session_id,
+      confirmed_items: previewResult.value!.preview_items  // 传递预览数据，避免依赖会话
     })
 
     if (result.success) {

@@ -14,6 +14,18 @@ if (-not (Test-Path "backend")) {
 # Environment name
 $envName = "hospital-backend"
 
+# Initialize Conda
+$condaPath = "C:\software\anaconda3"
+$condaHook = "$condaPath\shell\condabin\conda-hook.ps1"
+
+if (Test-Path $condaHook) {
+    Write-Host "Initializing Conda..." -ForegroundColor Yellow
+    & $condaHook
+} else {
+    Write-Host "ERROR: Conda hook not found at $condaHook" -ForegroundColor Red
+    exit 1
+}
+
 # Check if conda environment exists
 Write-Host "Checking Conda environment: $envName" -ForegroundColor Yellow
 $envExists = conda env list | Select-String -Pattern $envName

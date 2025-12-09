@@ -77,6 +77,8 @@ def init_permissions(db: Session):
 
 def init_roles(db: Session, permissions: list):
     """Initialize default roles"""
+    from app.models.role import RoleType
+    
     # Check if roles already exist
     existing_count = db.query(Role).count()
     if existing_count > 0:
@@ -88,43 +90,24 @@ def init_roles(db: Session, permissions: list):
     
     roles_data = [
         {
-            "name": "System Administrator",
+            "name": "系统维护者",
+            "code": "maintainer",
+            "role_type": RoleType.MAINTAINER,
+            "description": "系统最高权限，可管理所有用户和AI接口",
+            "permissions": list(all_perms.values())
+        },
+        {
+            "name": "系统管理员",
             "code": "admin",
-            "description": "Full system access",
-            "permissions": list(all_perms.values())  # All permissions
+            "role_type": RoleType.ADMIN,
+            "description": "管理员权限，可跨医疗机构操作",
+            "permissions": list(all_perms.values())
         },
         {
-            "name": "Model Designer",
-            "code": "model_designer",
-            "description": "Can design and manage evaluation models",
-            "permissions": [
-                all_perms["model:create"],
-                all_perms["model:read"],
-                all_perms["model:update"],
-                all_perms["model:delete"],
-                all_perms["department:read"],
-                all_perms["calculation:read"],
-                all_perms["result:read"],
-            ]
-        },
-        {
-            "name": "Data Analyst",
-            "code": "data_analyst",
-            "description": "Can trigger calculations and export results",
-            "permissions": [
-                all_perms["model:read"],
-                all_perms["department:read"],
-                all_perms["calculation:create"],
-                all_perms["calculation:read"],
-                all_perms["calculation:cancel"],
-                all_perms["result:read"],
-                all_perms["result:export"],
-            ]
-        },
-        {
-            "name": "Business Expert",
-            "code": "business_expert",
-            "description": "Can view and adjust models, trigger calculations",
+            "name": "全院用户",
+            "code": "user",
+            "role_type": RoleType.HOSPITAL_USER,
+            "description": "全院用户，可操作所属医疗机构的所有数据",
             "permissions": [
                 all_perms["model:read"],
                 all_perms["model:update"],
@@ -136,9 +119,10 @@ def init_roles(db: Session, permissions: list):
             ]
         },
         {
-            "name": "Department Manager",
-            "code": "dept_manager",
-            "description": "Can view results for their department",
+            "name": "科室用户",
+            "code": "dept_user",
+            "role_type": RoleType.DEPARTMENT_USER,
+            "description": "科室用户，只能查看本科室的业务价值报表",
             "permissions": [
                 all_perms["result:read"],
             ]

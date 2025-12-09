@@ -52,6 +52,7 @@ class CalculationResult(Base):
     parent_id = Column(Integer, comment="父节点ID")
     workload = Column(DECIMAL(20, 4), comment="工作量")
     weight = Column(DECIMAL(10, 4), comment="权重/单价")
+    original_weight = Column(DECIMAL(10, 4), comment="原始权重（未调整）")
     value = Column(DECIMAL(20, 4), comment="价值")
     ratio = Column(DECIMAL(10, 4), comment="占比")
     created_at = Column(DateTime, default=datetime.now, comment="创建时间")

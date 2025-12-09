@@ -56,6 +56,7 @@ export interface WorkflowUpdateData {
 export interface WorkflowCopyData {
   name: string
   description?: string
+  target_version_id?: number
 }
 
 export interface StepCreateData {

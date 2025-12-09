@@ -105,6 +105,8 @@ export interface ModelNode {
   weight?: number
   unit?: string
   business_guide?: string
+  orientation_rule_id?: number
+  orientation_rule_name?: string
   script?: string
   rule?: string
   created_at: string
@@ -139,6 +141,7 @@ export interface ModelNodeUpdate {
   weight?: number
   unit?: string
   business_guide?: string
+  orientation_rule_id?: number | null
   script?: string
   rule?: string
 }
@@ -151,6 +154,23 @@ export function getModelNodes(params: { version_id: number; parent_id?: number }
     url: '/model-nodes',
     method: 'get',
     params
+  })
+}
+
+/**
+ * 获取指定版本的所有末级维度（叶子节点）
+ */
+export interface LeafNode {
+  id: number
+  name: string
+  code: string
+  full_path: string
+}
+
+export function getLeafNodes(versionId: number) {
+  return request<LeafNode[]>({
+    url: `/model-nodes/version/${versionId}/leaf`,
+    method: 'get'
   })
 }
 

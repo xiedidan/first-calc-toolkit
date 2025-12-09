@@ -96,7 +96,7 @@
       v-model="dialogVisible"
       :title="dialogTitle"
       width="500px"
-      custom-class="full-height-dialog"
+      append-to-body
       @close="handleDialogClose"
     >
       <el-form

@@ -29,3 +29,5 @@ class ModelVersion(Base):
     nodes = relationship("ModelNode", back_populates="version", cascade="all, delete-orphan")
     workflows = relationship("CalculationWorkflow", back_populates="version", cascade="all, delete-orphan")
     calculation_tasks = relationship("CalculationTask", back_populates="model_version")
+    classification_tasks = relationship("ClassificationTask", back_populates="model_version")
+    cost_benchmarks = relationship("CostBenchmark", back_populates="version")

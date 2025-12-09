@@ -39,6 +39,7 @@
 
       <!-- 表格 -->
       <el-table :data="tableData" border stripe v-loading="loading">
+        <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="version" label="版本号" width="120" />
         <el-table-column prop="name" label="版本名称" min-width="200" />
         <el-table-column prop="description" label="版本描述" min-width="250" show-overflow-tooltip />
@@ -104,7 +105,7 @@
       v-model="dialogVisible"
       :title="dialogTitle"
       width="600px"
-      custom-class="full-height-dialog"
+      append-to-body
       @close="handleDialogClose"
     >
       <el-form :model="form" :rules="rules" ref="formRef" label-width="100px">
@@ -140,7 +141,7 @@
       v-model="copyDialogVisible"
       title="复制版本"
       width="600px"
-      custom-class="full-height-dialog"
+      append-to-body
       @close="handleCopyDialogClose"
     >
       <el-alert

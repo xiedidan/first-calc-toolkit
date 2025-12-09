@@ -3,7 +3,7 @@
     v-model="visible"
     :title="result.success ? '测试成功' : '测试失败'"
     width="900px"
-    custom-class="full-height-dialog"
+    append-to-body
     :close-on-click-modal="false"
   >
     <div class="test-result-container">

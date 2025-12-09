@@ -627,12 +627,14 @@ async def export_templates(
     request: ExportTemplateRequest,
     db: Session = Depends(deps.get_db),
     current_user = Depends(deps.get_current_user),
+    format: str = Query("markdown", description="导出格式: markdown 或 pdf"),
 ):
-    """导出数据模板为Markdown文档"""
-    from fastapi.responses import Response
+    """导出数据模板为Markdown或PDF文档"""
+    from fastapi.responses import Response, StreamingResponse
     from app.utils.hospital_filter import apply_hospital_filter
     import os
     from datetime import datetime
+    from io import BytesIO
     
     # 查询数据模板
     query = db.query(DataTemplate).filter(DataTemplate.id.in_(request.template_ids))
@@ -692,14 +694,254 @@ async def export_templates(
         
         md_content += "---\n\n"
     
-    # 返回Markdown文件
-    return Response(
-        content=md_content.encode('utf-8'),
-        media_type="text/markdown",
-        headers={
-            "Content-Disposition": f"attachment; filename=data_templates_{datetime.now().strftime('%Y%m%d')}.md"
-        }
-    )
+    # 获取医院名称
+    from app.models.hospital import Hospital
+    from app.utils.hospital_filter import get_current_hospital_id_or_raise
+    hospital_id = get_current_hospital_id_or_raise()
+    hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+    hospital_name = hospital.name if hospital else "未知医院"
+    
+    from urllib.parse import quote
+    timestamp = datetime.now().strftime('%Y%m%d')
+    
+    # 根据格式返回不同类型的文件
+    if format.lower() == "pdf":
+        # 生成PDF
+        import markdown
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import cm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Preformatted
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        from reportlab.lib.enums import TA_LEFT, TA_CENTER
+        
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            rightMargin=2*cm,
+            leftMargin=2*cm,
+            topMargin=2*cm,
+            bottomMargin=2*cm
+        )
+        
+        # 注册中文字体
+        try:
+            pdfmetrics.registerFont(TTFont('SimSun', 'C:/Windows/Fonts/simsun.ttc'))
+            font_name = 'SimSun'
+        except:
+            font_name = 'Helvetica'
+        
+        # 创建样式
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontName=font_name,
+            fontSize=18,
+            textColor=colors.HexColor('#2c3e50'),
+            spaceAfter=20,
+            alignment=TA_CENTER
+        )
+        
+        heading_style = ParagraphStyle(
+            'CustomHeading',
+            parent=styles['Heading2'],
+            fontName=font_name,
+            fontSize=14,
+            textColor=colors.HexColor('#34495e'),
+            spaceAfter=10,
+            spaceBefore=15
+        )
+        
+        body_style = ParagraphStyle(
+            'CustomBody',
+            parent=styles['Normal'],
+            fontName=font_name,
+            fontSize=10,
+            leading=14
+        )
+        
+        code_style = ParagraphStyle(
+            'Code',
+            parent=styles['Code'],
+            fontName=font_name,  # 使用中文字体而不是Courier
+            fontSize=8,
+            leading=10,
+            leftIndent=10,
+            rightIndent=10,
+            wordWrap='CJK'  # 支持中文换行
+        )
+        
+        # 构建PDF内容
+        story = []
+        story.append(Paragraph("数据模板文档", title_style))
+        story.append(Spacer(1, 0.5*cm))
+        story.append(Paragraph(f"导出时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", body_style))
+        story.append(Paragraph(f"模板数量: {len(templates)}", body_style))
+        story.append(Spacer(1, 1*cm))
+        
+        for idx, template in enumerate(templates, 1):
+            story.append(Paragraph(f"{idx}. {template.table_name_cn} ({template.table_name})", heading_style))
+            story.append(Paragraph(f"表名: {template.table_name}", body_style))
+            story.append(Paragraph(f"中文名: {template.table_name_cn}", body_style))
+            story.append(Paragraph(f"核心表: {'是' if template.is_core else '否'}", body_style))
+            if template.description:
+                story.append(Paragraph(f"说明: {template.description}", body_style))
+            story.append(Spacer(1, 0.5*cm))
+            
+            # 表定义文档
+            if template.definition_file_path:
+                file_path = DataTemplateFileService.get_file_path(template.definition_file_path)
+                if file_path.exists():
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            definition_content = f.read()
+                        story.append(Paragraph("表定义:", body_style))
+                        story.append(Spacer(1, 0.2*cm))
+                        
+                        # 解析Markdown内容，提取表格并渲染
+                        from reportlab.platypus import Table, TableStyle
+                        lines = definition_content.split('\n')
+                        i = 0
+                        while i < len(lines):
+                            line = lines[i].strip()
+                            
+                            # 检测Markdown表格
+                            if line.startswith('|'):
+                                # 收集表格行
+                                table_lines = []
+                                while i < len(lines) and lines[i].strip().startswith('|'):
+                                    table_lines.append(lines[i].strip())
+                                    i += 1
+                                
+                                # 解析表格数据
+                                table_data = []
+                                for tline in table_lines:
+                                    # 跳过分隔符行
+                                    if set(tline.replace('|', '').replace('-', '').replace(' ', '').replace(':', '')) == set():
+                                        continue
+                                    # 解析单元格
+                                    cells = [cell.strip() for cell in tline.split('|')[1:-1]]
+                                    table_data.append(cells)
+                                
+                                if table_data:
+                                    # 计算可用宽度（A4宽度 - 左右边距）
+                                    available_width = A4[0] - 4*cm  # 21cm - 4cm = 17cm
+                                    num_cols = len(table_data[0])
+                                    
+                                    # 根据列数自动分配列宽
+                                    col_widths = [available_width / num_cols] * num_cols
+                                    
+                                    # 创建单元格样式（用于自动换行）
+                                    cell_style = ParagraphStyle(
+                                        'CellStyle',
+                                        parent=body_style,
+                                        fontSize=8,
+                                        leading=10,
+                                        wordWrap='CJK'
+                                    )
+                                    
+                                    header_cell_style = ParagraphStyle(
+                                        'HeaderCellStyle',
+                                        parent=cell_style,
+                                        textColor=colors.white,
+                                        fontName=font_name,
+                                        fontSize=8,
+                                        leading=10
+                                    )
+                                    
+                                    # 将每个单元格转换为Paragraph以支持自动换行
+                                    formatted_data = []
+                                    for row_idx, row in enumerate(table_data):
+                                        formatted_row = []
+                                        for cell in row:
+                                            # 清理单元格内容，转义HTML特殊字符
+                                            cell_text = str(cell)
+                                            # 替换HTML标签为纯文本
+                                            cell_text = cell_text.replace('<br>', '\n')
+                                            cell_text = cell_text.replace('<br/>', '\n')
+                                            cell_text = cell_text.replace('<br />', '\n')
+                                            # 转义其他HTML字符
+                                            cell_text = cell_text.replace('&', '&amp;')
+                                            cell_text = cell_text.replace('<', '&lt;')
+                                            cell_text = cell_text.replace('>', '&gt;')
+                                            # 将换行符转换为<br/>标签（ReportLab支持的格式）
+                                            cell_text = cell_text.replace('\n', '<br/>')
+                                            
+                                            # 第一行使用表头样式，其他行使用普通样式
+                                            style = header_cell_style if row_idx == 0 else cell_style
+                                            formatted_row.append(Paragraph(cell_text, style))
+                                        formatted_data.append(formatted_row)
+                                    
+                                    # 创建PDF表格，指定列宽
+                                    pdf_table = Table(formatted_data, colWidths=col_widths)
+                                    pdf_table.setStyle(TableStyle([
+                                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498db')),
+                                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                                        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                                        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                                        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f2f2f2')]),
+                                        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                                        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+                                        ('TOPPADDING', (0, 0), (-1, -1), 3),
+                                        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+                                    ]))
+                                    story.append(pdf_table)
+                                    story.append(Spacer(1, 0.3*cm))
+                            else:
+                                # 普通文本行
+                                if line:
+                                    story.append(Paragraph(line, body_style))
+                                i += 1
+                        
+                        story.append(Spacer(1, 0.3*cm))
+                    except Exception as e:
+                        story.append(Paragraph(f"无法读取表定义文档: {str(e)}", body_style))
+                        story.append(Spacer(1, 0.3*cm))
+            
+            # SQL代码
+            if template.sql_file_path:
+                file_path = DataTemplateFileService.get_file_path(template.sql_file_path)
+                if file_path.exists():
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            sql_content = f.read()
+                        story.append(Paragraph("SQL建表代码:", body_style))
+                        story.append(Spacer(1, 0.2*cm))
+                        story.append(Preformatted(sql_content, code_style))
+                    except Exception as e:
+                        story.append(Paragraph(f"无法读取SQL文件: {str(e)}", body_style))
+            
+            story.append(Spacer(1, 0.5*cm))
+        
+        doc.build(story)
+        buffer.seek(0)
+        
+        filename = f"{hospital_name}_数据模板_{timestamp}.pdf"
+        encoded_filename = quote(filename)
+        
+        return StreamingResponse(
+            buffer,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
+            }
+        )
+    else:
+        # 返回Markdown文件
+        filename = f"{hospital_name}_数据模板_{timestamp}.md"
+        encoded_filename = quote(filename)
+        
+        return Response(
+            content=md_content.encode('utf-8'),
+            media_type="text/markdown",
+            headers={
+                "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
+            }
+        )
 
 
 @router.post("/copy", response_model=CopyResult)

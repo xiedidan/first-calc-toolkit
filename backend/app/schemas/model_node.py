@@ -17,9 +17,9 @@ class ModelNodeBase(BaseModel):
     calc_type: Optional[str] = Field(None, description="算法类型(statistical=指标/calculational=目录)")
     weight: Optional[Decimal] = Field(None, description="权重/单价")
     unit: Optional[str] = Field('%', description="单位")
-    business_guide: Optional[str] = Field(None, description="业务导向")
     script: Optional[str] = Field(None, description="SQL/Python脚本")
     rule: Optional[str] = Field(None, description="规则说明")
+    orientation_rule_ids: Optional[list[int]] = Field(None, description="关联导向规则ID列表")
 
 
 class ModelNodeCreate(ModelNodeBase):
@@ -38,9 +38,9 @@ class ModelNodeUpdate(BaseModel):
     calc_type: Optional[str] = Field(None, description="算法类型")
     weight: Optional[Decimal] = Field(None, description="权重/单价")
     unit: Optional[str] = Field(None, description="单位")
-    business_guide: Optional[str] = Field(None, description="业务导向")
     script: Optional[str] = Field(None, description="SQL/Python脚本")
     rule: Optional[str] = Field(None, description="规则说明")
+    orientation_rule_ids: Optional[list[int]] = Field(None, description="关联导向规则ID列表")
 
 
 class ModelNodeResponse(ModelNodeBase):
@@ -50,6 +50,7 @@ class ModelNodeResponse(ModelNodeBase):
     parent_id: Optional[int]
     sort_order: Decimal
     is_leaf: bool
+    orientation_rule_names: Optional[list[str]] = Field(default_factory=list, description="关联导向规则名称列表")
     created_at: datetime
     updated_at: datetime
     children: list["ModelNodeResponse"] = []

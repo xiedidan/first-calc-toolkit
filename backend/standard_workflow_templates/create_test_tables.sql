@@ -108,7 +108,51 @@ VALUES
     ('NK', '2025-10', 'consultation', '发起', 15),
     ('NK', '2025-10', 'consultation', '参与', 25),
     ('WK', '2025-10', 'consultation', '发起', 20),
-    ('WK', '2025-10', 'consultation', '参与', 30);
+    ('WK', '2025-10', 'consultation', '参与', 30),
+    
+    -- 护理床日（使用维度code作为stat_type）
+    ('NK', '2025-10', 'dim-nur-bed-3', NULL, 80),
+    ('NK', '2025-10', 'dim-nur-bed-4', NULL, 120),
+    ('NK', '2025-10', 'dim-nur-bed-5', NULL, 50),
+    ('WK', '2025-10', 'dim-nur-bed-3', NULL, 100),
+    ('WK', '2025-10', 'dim-nur-bed-4', NULL, 150),
+    ('WK', '2025-10', 'dim-nur-bed-5', NULL, 50),
+    ('EK', '2025-10', 'dim-nur-bed-3', NULL, 40),
+    ('EK', '2025-10', 'dim-nur-bed-4', NULL, 80),
+    ('EK', '2025-10', 'dim-nur-bed-5', NULL, 30),
+    
+    -- 出入转院（使用维度code作为stat_type）
+    ('NK', '2025-10', 'dim-nur-trans-in', NULL, 80),
+    ('NK', '2025-10', 'dim-nur-trans-out', NULL, 75),
+    ('NK', '2025-10', 'dim-nur-trans-intraday', NULL, 10),
+    ('WK', '2025-10', 'dim-nur-trans-in', NULL, 100),
+    ('WK', '2025-10', 'dim-nur-trans-out', NULL, 95),
+    ('WK', '2025-10', 'dim-nur-trans-intraday', NULL, 15),
+    ('EK', '2025-10', 'dim-nur-trans-in', NULL, 50),
+    ('EK', '2025-10', 'dim-nur-trans-out', NULL, 48),
+    ('EK', '2025-10', 'dim-nur-trans-intraday', NULL, 5),
+    
+    -- 手术管理（使用维度code作为stat_type）
+    ('NK', '2025-10', 'dim-nur-op-3', NULL, 10),
+    ('NK', '2025-10', 'dim-nur-op-4', NULL, 15),
+    ('NK', '2025-10', 'dim-nur-op-acad', NULL, 5),
+    ('WK', '2025-10', 'dim-nur-op-3', NULL, 30),
+    ('WK', '2025-10', 'dim-nur-op-4', NULL, 40),
+    ('WK', '2025-10', 'dim-nur-op-acad', NULL, 10),
+    ('EK', '2025-10', 'dim-nur-op-3', NULL, 8),
+    ('EK', '2025-10', 'dim-nur-op-4', NULL, 10),
+    ('EK', '2025-10', 'dim-nur-op-other', NULL, 2),
+    
+    -- 手术室护理（使用维度code作为stat_type）
+    ('NK', '2025-10', 'dim-nur-or-large', NULL, 50),
+    ('NK', '2025-10', 'dim-nur-or-mid', NULL, 70),
+    ('NK', '2025-10', 'dim-nur-or-tiny', NULL, 30),
+    ('WK', '2025-10', 'dim-nur-or-large', NULL, 150),
+    ('WK', '2025-10', 'dim-nur-or-mid', NULL, 180),
+    ('WK', '2025-10', 'dim-nur-or-tiny', NULL, 70),
+    ('EK', '2025-10', 'dim-nur-or-large', NULL, 30),
+    ('EK', '2025-10', 'dim-nur-or-mid', NULL, 50),
+    ('EK', '2025-10', 'dim-nur-or-tiny', NULL, 20);
 
 -- ============================================================================
 -- 验证数据

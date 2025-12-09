@@ -50,6 +50,82 @@ TABLE_IMPORT_ORDER = [
     "calculation_summaries",    # 计算汇总表（依赖calculation_tasks）
 ]
 
+def create_missing_tables(session, table_name, table_info):
+    """根据导出的表结构信息创建缺失的表"""
+    try:
+        columns_def = []
+        for col_name, col_info in table_info.get("columns", {}).items():
+            col_type = col_info.get("type", "TEXT")
+            nullable = "NULL" if col_info.get("nullable", True) else "NOT NULL"
+            columns_def.append(f'"{col_name}" {col_type} {nullable}')
+        
+        if not columns_def:
+            return False
+        
+        create_sql = f'CREATE TABLE IF NOT EXISTS "{table_name}" ({", ".join(columns_def)})'
+        session.execute(text(create_sql))
+        session.commit()
+        print(f"  ✓ 表 {table_name} 创建成功")
+        return True
+    except Exception as e:
+        print(f"  ✗ 创建表失败: {e}")
+        session.rollback()
+        return False
+
+
+def run_migrations(database_url):
+    """运行数据库迁移，创建所有表结构"""
+    print("\n>>> 检查并创建表结构...")
+    try:
+        import subprocess
+        import sys
+        
+        # 设置环境变量
+        env = os.environ.copy()
+        env['DATABASE_URL'] = database_url
+        
+        # 运行 alembic upgrade head
+        result = subprocess.run(
+            [sys.executable, '-m', 'alembic', 'upgrade', 'head'],
+            cwd=os.path.dirname(__file__),
+            env=env,
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode == 0:
+            print("✓ 表结构创建/更新完成")
+            return True
+        else:
+            print(f"⚠ 迁移执行警告: {result.stderr}")
+            # 即使有警告也继续，因为表可能已经存在
+            return True
+            
+    except Exception as e:
+        print(f"⚠ 无法运行迁移: {e}")
+        print("  将尝试直接导入数据...")
+        return False
+
+
+def clean_alembic_version(session):
+    """清理 alembic_version 表，避免迁移版本冲突"""
+    try:
+        print("\n>>> 清理旧的迁移版本记录...")
+        result = session.execute(text("DELETE FROM alembic_version"))
+        deleted = result.rowcount
+        session.commit()
+        if deleted > 0:
+            print(f"✓ 已清理 {deleted} 条旧的迁移版本记录")
+        else:
+            print("✓ 无需清理（表为空或不存在）")
+        return True
+    except Exception as e:
+        # 表可能不存在，这是正常的
+        session.rollback()
+        print(f"✓ alembic_version 表不存在或已清空")
+        return True
+
+
 def import_database(database_url, input_file, skip_existing=True):
     """导入数据库数据
     
@@ -60,8 +136,19 @@ def import_database(database_url, input_file, skip_existing=True):
     """
     print(f"连接数据库: {database_url.split('@')[1] if '@' in database_url else database_url}")
     
-    # 创建引擎
+    # 创建引擎和会话（用于清理）
     engine = create_engine(database_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    
+    # 先清理 alembic_version 表，避免版本冲突
+    clean_alembic_version(session)
+    session.close()
+    
+    # 运行迁移，确保表结构存在
+    run_migrations(database_url)
+    
+    # 重新创建会话用于数据导入
     metadata = MetaData()
     metadata.reflect(bind=engine)
     
@@ -75,7 +162,7 @@ def import_database(database_url, input_file, skip_existing=True):
     print(f"包含 {len(data['tables'])} 个表")
     print(f"导入模式: {'跳过已存在记录' if skip_existing else '覆盖已存在记录'}")
     
-    Session = sessionmaker(bind=engine)
+    # 创建新的会话用于数据导入
     session = Session()
     
     # 统计信息
@@ -89,15 +176,28 @@ def import_database(database_url, input_file, skip_existing=True):
     try:
         # 按照定义的顺序导入表
         for table_name in TABLE_IMPORT_ORDER:
+            # 跳过 alembic_version 表（迁移版本由 alembic upgrade 管理）
+            if table_name == 'alembic_version':
+                continue
             if table_name not in data["tables"]:
                 continue
                 
             print(f"\n导入表: {table_name}...", end=" ")
             
             if table_name not in metadata.tables:
-                print(f"⚠ 表不存在，跳过")
-                stats["skipped"] += 1
-                continue
+                print(f"表不存在，尝试创建...")
+                table_info = data["tables"][table_name]
+                if create_missing_tables(session, table_name, table_info):
+                    # 重新加载元数据
+                    metadata.clear()
+                    metadata.reflect(bind=engine)
+                    if table_name not in metadata.tables:
+                        print(f"  ⚠ 创建后仍无法找到表，跳过")
+                        stats["skipped"] += 1
+                        continue
+                else:
+                    stats["skipped"] += 1
+                    continue
             
             table = metadata.tables[table_name]
             table_info = data["tables"][table_name]
@@ -161,16 +261,32 @@ def import_database(database_url, input_file, skip_existing=True):
                 stats["failed"] += 1
         
         # 处理不在顺序列表中的其他表
+        missing_tables = []
         for table_name in data["tables"].keys():
+            # 跳过 alembic_version 表
+            if table_name == 'alembic_version':
+                continue
             if table_name in TABLE_IMPORT_ORDER:
                 continue
                 
             print(f"\n导入表: {table_name} (未定义顺序)...", end=" ")
             
             if table_name not in metadata.tables:
-                print(f"⚠ 表不存在，跳过")
-                stats["skipped"] += 1
-                continue
+                print(f"表不存在，尝试创建...")
+                table_info = data["tables"][table_name]
+                if create_missing_tables(session, table_name, table_info):
+                    # 重新加载元数据
+                    metadata.clear()
+                    metadata.reflect(bind=engine)
+                    if table_name not in metadata.tables:
+                        print(f"  ⚠ 创建后仍无法找到表")
+                        missing_tables.append(table_name)
+                        stats["skipped"] += 1
+                        continue
+                else:
+                    missing_tables.append(table_name)
+                    stats["skipped"] += 1
+                    continue
             
             table = metadata.tables[table_name]
             table_info = data["tables"][table_name]
@@ -200,6 +316,19 @@ def import_database(database_url, input_file, skip_existing=True):
         print(f"跳过: {stats['skipped']} 个表")
         print(f"总计导入: {stats['total_rows']} 行数据")
         print("="*50)
+        
+        # 如果有缺失的表，给出提示
+        if missing_tables:
+            print("\n⚠ 警告: 以下表不存在，数据未导入:")
+            for table in missing_tables:
+                print(f"  - {table}")
+            print("\n这些表可能是:")
+            print("  1. 业务数据表（如 charge_details, TB_MZ_SFMXB 等）")
+            print("  2. 临时表或中间表")
+            print("\n如果这些表应该存在，请检查:")
+            print("  1. 数据库迁移是否完整执行")
+            print("  2. 表结构定义是否正确")
+            print("  3. 是否需要手动创建这些表")
         
         # 重置所有表的序列
         print("\n>>> 重置数据库序列...")

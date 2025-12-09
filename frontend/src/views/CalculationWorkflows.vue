@@ -88,7 +88,7 @@
       v-model="dialogVisible"
       :title="dialogTitle"
       width="600px"
-      custom-class="full-height-dialog"
+      append-to-body
       @close="handleDialogClose"
     >
       <el-form
@@ -138,15 +138,33 @@
       v-model="copyDialogVisible"
       title="复制流程"
       width="600px"
-      custom-class="full-height-dialog"
+      append-to-body
       @close="handleCopyDialogClose"
     >
       <el-form
         ref="copyFormRef"
         :model="copyFormData"
         :rules="copyFormRules"
-        label-width="100px"
+        label-width="120px"
       >
+        <el-form-item label="目标模型版本" prop="target_version_id">
+          <el-select
+            v-model="copyFormData.target_version_id"
+            placeholder="不选择则复制到原版本"
+            clearable
+            style="width: 100%"
+          >
+            <el-option
+              v-for="version in versionList"
+              :key="version.id"
+              :label="version.name"
+              :value="version.id"
+            />
+          </el-select>
+          <div style="color: #909399; font-size: 12px; margin-top: 4px;">
+            不选择则复制到原版本（{{ copyFormData.source_version_name }}）
+          </div>
+        </el-form-item>
         <el-form-item label="新流程名称" prop="name">
           <el-input v-model="copyFormData.name" placeholder="请输入新流程名称" />
         </el-form-item>
@@ -171,7 +189,7 @@
       :title="`${currentWorkflow?.name} - 步骤管理`"
       width="90%"
       top="5vh"
-      custom-class="full-height-dialog"
+      append-to-body
       @close="handleStepsDialogClose"
     >
       <div class="steps-container">
@@ -226,7 +244,7 @@
       v-model="stepDialogVisible"
       :title="stepDialogTitle"
       width="800px"
-      custom-class="full-height-dialog"
+      append-to-body
       @close="handleStepDialogClose"
     >
       <el-form
@@ -382,7 +400,9 @@ const copyFormRef = ref<FormInstance>()
 const copyFormData = reactive({
   id: 0,
   name: '',
-  description: ''
+  description: '',
+  target_version_id: undefined as number | undefined,
+  source_version_name: ''
 })
 const copyFormRules: FormRules = {
   name: [{ required: true, message: '请输入新流程名称', trigger: 'blur' }]
@@ -544,7 +564,9 @@ const handleCopy = (row: CalculationWorkflow) => {
   Object.assign(copyFormData, {
     id: row.id,
     name: `${row.name}_副本`,
-    description: row.description
+    description: row.description,
+    target_version_id: undefined,
+    source_version_name: row.version_name || '未知版本'
   })
   copyDialogVisible.value = true
 }
@@ -559,7 +581,8 @@ const handleCopySubmit = async () => {
     try {
       await calculationWorkflowApi.copy(copyFormData.id, {
         name: copyFormData.name,
-        description: copyFormData.description
+        description: copyFormData.description,
+        target_version_id: copyFormData.target_version_id
       })
       ElMessage.success('复制成功')
       copyDialogVisible.value = false

@@ -8,6 +8,8 @@ export interface UserListParams {
   page?: number
   size?: number
   keyword?: string
+  role_id?: number
+  hospital_id?: number
 }
 
 export interface UserListResponse {
@@ -20,8 +22,9 @@ export interface CreateUserData {
   name: string
   email?: string
   password: string
-  role: 'admin' | 'user'
+  role_id: number
   hospital_id?: number
+  department_id?: number
 }
 
 export interface UpdateUserData {
@@ -29,8 +32,9 @@ export interface UpdateUserData {
   email?: string
   password?: string
   status?: string
-  role?: 'admin' | 'user'
+  role_id?: number
   hospital_id?: number
+  department_id?: number
 }
 
 /**

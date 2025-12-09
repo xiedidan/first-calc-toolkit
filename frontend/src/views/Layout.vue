@@ -60,18 +60,18 @@
       </div>
     </el-header>
 
-    <el-container>
+    <el-container class="layout-body">
       <el-aside width="220px" class="layout-aside">
         <el-menu
           :default-active="activeMenu"
-          :default-openeds="['model', 'base-data', 'system']"
+          unique-opened
           router
           class="layout-menu"
         >
           <!-- 首页 -->
           <el-menu-item 
+            v-if="isMenuItemEnabled('/dashboard')"
             index="/dashboard"
-            :disabled="!isMenuItemEnabled('/dashboard')"
           >
             <el-icon><HomeFilled /></el-icon>
             <span>首页</span>
@@ -79,43 +79,71 @@
 
           <!-- 数据模板发布 -->
           <el-menu-item 
+            v-if="isMenuItemEnabled('/data-template-publish')"
             index="/data-template-publish"
-            :disabled="!isMenuItemEnabled('/data-template-publish')"
           >
             <el-icon><Grid /></el-icon>
             <span>数据模板发布</span>
           </el-menu-item>
 
-          <!-- 数据质量报告 (未实现) -->
-          <el-menu-item index="/data-quality" disabled>
-            <el-icon><DocumentChecked /></el-icon>
-            <span>数据质量报告</span>
-          </el-menu-item>
+          <!-- 数据质量报告 -->
+          <el-sub-menu 
+            v-if="isSubMenuVisible(['/data-issues'])"
+            index="data-quality"
+          >
+            <template #title>
+              <el-icon><DocumentChecked /></el-icon>
+              <span>数据质量报告</span>
+            </template>
+            <el-menu-item v-if="isMenuItemEnabled('/data-issues')" index="/data-issues">数据问题记录</el-menu-item>
+          </el-sub-menu>
 
-          <!-- 智能分类分级 (未实现) -->
-          <el-menu-item index="/intelligent-classification" disabled>
-            <el-icon><Operation /></el-icon>
-            <span>智能分类分级</span>
-          </el-menu-item>
+          <!-- 智能分类分级 -->
+          <el-sub-menu 
+            v-if="isSubMenuVisible(['/classification-tasks', '/classification-plans'])"
+            index="intelligent-classification"
+          >
+            <template #title>
+              <el-icon><Operation /></el-icon>
+              <span>智能分类分级</span>
+            </template>
+            <el-menu-item v-if="isMenuItemEnabled('/classification-tasks')" index="/classification-tasks">医技分类任务</el-menu-item>
+            <el-menu-item v-if="isMenuItemEnabled('/classification-plans')" index="/classification-plans">分类预案管理</el-menu-item>
+          </el-sub-menu>
 
           <!-- 评估模型管理 -->
           <el-sub-menu 
+            v-if="isSubMenuVisible(['/model-versions', '/dimension-items', '/cost-benchmarks', '/calculation-workflows'])"
             index="model"
-            :disabled="!isMenuItemEnabled('/model-versions')"
           >
             <template #title>
               <el-icon><Document /></el-icon>
               <span>评估模型管理</span>
             </template>
-            <el-menu-item index="/model-versions">模型版本管理</el-menu-item>
-            <el-menu-item index="/dimension-items">维度目录管理</el-menu-item>
-            <el-menu-item index="/calculation-workflows">计算流程管理</el-menu-item>
+            <el-menu-item v-if="isMenuItemEnabled('/model-versions')" index="/model-versions">模型版本管理</el-menu-item>
+            <el-menu-item v-if="isMenuItemEnabled('/dimension-items')" index="/dimension-items">维度目录管理</el-menu-item>
+            <el-menu-item v-if="isMenuItemEnabled('/cost-benchmarks')" index="/cost-benchmarks">成本基准管理</el-menu-item>
+            <el-menu-item v-if="isMenuItemEnabled('/calculation-workflows')" index="/calculation-workflows">计算流程管理</el-menu-item>
+          </el-sub-menu>
+
+          <!-- 业务导向管理 -->
+          <el-sub-menu 
+            v-if="isSubMenuVisible(['/orientation-rules', '/orientation-benchmarks', '/orientation-ladders'])"
+            index="orientation"
+          >
+            <template #title>
+              <el-icon><Guide /></el-icon>
+              <span>业务导向管理</span>
+            </template>
+            <el-menu-item v-if="isMenuItemEnabled('/orientation-rules')" index="/orientation-rules">导向规则管理</el-menu-item>
+            <el-menu-item v-if="isMenuItemEnabled('/orientation-benchmarks')" index="/orientation-benchmarks">导向基准管理</el-menu-item>
+            <el-menu-item v-if="isMenuItemEnabled('/orientation-ladders')" index="/orientation-ladders">导向阶梯管理</el-menu-item>
           </el-sub-menu>
 
           <!-- 计算任务管理 -->
           <el-menu-item 
+            v-if="isMenuItemEnabled('/calculation-tasks')"
             index="/calculation-tasks"
-            :disabled="!isMenuItemEnabled('/calculation-tasks')"
           >
             <el-icon><Clock /></el-icon>
             <span>计算任务管理</span>
@@ -123,63 +151,57 @@
 
           <!-- 报表查询展示 -->
           <el-menu-item 
+            v-if="isMenuItemEnabled('/results')"
             index="/results"
-            :disabled="!isMenuItemEnabled('/results')"
           >
             <el-icon><DataAnalysis /></el-icon>
             <span>业务价值报表</span>
           </el-menu-item>
 
           <!-- ADV自动建模 (未实现) -->
-          <el-menu-item index="/adv-modeling" disabled>
+          <el-menu-item v-if="isAdmin" index="/adv-modeling" disabled>
             <el-icon><MagicStick /></el-icon>
             <span>ADV自动建模</span>
           </el-menu-item>
 
           <!-- 智能问数系统 (未实现) -->
-          <el-menu-item index="/intelligent-query" disabled>
+          <el-menu-item v-if="isAdmin" index="/intelligent-query" disabled>
             <el-icon><ChatDotRound /></el-icon>
             <span>智能问数系统</span>
           </el-menu-item>
 
-          <!-- 运营分析报告 (未实现) -->
-          <el-menu-item index="/operation-analysis" disabled>
-            <el-icon><TrendCharts /></el-icon>
-            <span>运营分析报告</span>
-          </el-menu-item>
+          <!-- 运营分析报告 -->
+          <el-sub-menu 
+            v-if="isSubMenuVisible(['/report-view', '/report-management'])"
+            index="operation-analysis"
+          >
+            <template #title>
+              <el-icon><TrendCharts /></el-icon>
+              <span>运营分析报告</span>
+            </template>
+            <el-menu-item v-if="isMenuItemEnabled('/report-view')" index="/report-view">分析报告查看</el-menu-item>
+            <el-menu-item v-if="isAdmin" index="/report-management">分析报告管理</el-menu-item>
+          </el-sub-menu>
 
           <!-- 基础数据管理 -->
           <el-sub-menu 
+            v-if="isSubMenuVisible(['/departments', '/charge-items', '/reference-values', '/data-templates'])"
             index="base-data"
-            :disabled="!isMenuItemEnabled('/departments')"
           >
             <template #title>
               <el-icon><FolderOpened /></el-icon>
               <span>基础数据管理</span>
             </template>
-            <el-menu-item index="/departments">科室对照管理</el-menu-item>
-            <el-menu-item index="/charge-items">收费项目管理</el-menu-item>
-            <el-menu-item 
-              v-if="isAdmin"
-              index="/data-templates"
-            >
-              数据模板管理
-            </el-menu-item>
+            <el-menu-item v-if="isMenuItemEnabled('/departments')" index="/departments">科室对照管理</el-menu-item>
+            <el-menu-item v-if="isMenuItemEnabled('/charge-items')" index="/charge-items">收费项目管理</el-menu-item>
+            <el-menu-item v-if="isMenuItemEnabled('/reference-values')" index="/reference-values">参考价值管理</el-menu-item>
+            <el-menu-item v-if="isAdmin" index="/data-templates">数据模板管理</el-menu-item>
           </el-sub-menu>
 
           <!-- 数据源管理 -->
-          <el-menu-item index="/data-sources">
+          <el-menu-item v-if="isMenuItemEnabled('/data-sources')" index="/data-sources">
             <el-icon><Connection /></el-icon>
             <span>数据源管理</span>
-          </el-menu-item>
-
-          <!-- 医疗机构管理 -->
-          <el-menu-item 
-            v-if="isAdmin"
-            index="/hospitals"
-          >
-            <el-icon><OfficeBuilding /></el-icon>
-            <span>医疗机构管理</span>
           </el-menu-item>
 
           <!-- 系统设置 -->
@@ -188,8 +210,11 @@
               <el-icon><Setting /></el-icon>
               <span>系统设置</span>
             </template>
-            <el-menu-item index="/system-settings">参数管理</el-menu-item>
-            <el-menu-item index="/users">用户管理</el-menu-item>
+            <el-menu-item v-if="isMenuItemEnabled('/system-settings')" index="/system-settings">参数管理</el-menu-item>
+            <el-menu-item v-if="isAdmin" index="/users">用户管理</el-menu-item>
+            <el-menu-item v-if="isAdmin" index="/roles">用户角色管理</el-menu-item>
+            <el-menu-item v-if="isMaintainer" index="/ai-config">AI接口管理</el-menu-item>
+            <el-menu-item v-if="isAdmin" index="/hospitals">医疗机构管理</el-menu-item>
           </el-sub-menu>
         </el-menu>
       </el-aside>
@@ -213,7 +238,8 @@ import {
   Grid,
   DocumentChecked,
   Operation,
-  Document, 
+  Document,
+  Guide,
   Clock, 
   DataAnalysis,
   MagicStick,
@@ -223,8 +249,10 @@ import {
   Connection,
   Setting,
   OfficeBuilding,
-  Check
+  Check,
+  Money
 } from '@element-plus/icons-vue'
+
 import { useUserStore } from '@/stores/user'
 import { useHospitalStore } from '@/stores/hospital'
 
@@ -241,19 +269,38 @@ const pageTitle = computed(() => {
   return '医院科室业务价值评估工具'
 })
 
+// Check if hospital is activated
+const isHospitalActivated = computed(() => hospitalStore.isHospitalActivated)
+
 // Check if user is admin
-const isAdmin = computed(() => {
-  return userStore.hasRole('admin') || userStore.hasRole('系统管理员')
-})
+const isAdmin = computed(() => userStore.isAdmin)
+
+// Check if user is maintainer
+const isMaintainer = computed(() => userStore.isMaintainer)
 
 // User roles display
 const userRolesDisplay = computed(() => {
-  return userStore.userInfo?.roles?.join(', ') || ''
+  return userStore.userInfo?.role_name || ''
 })
 
-// Check if menu item should be enabled
+// Check if menu item should be enabled (combines hospital activation + user permission)
 const isMenuItemEnabled = (menuPath: string) => {
-  return hospitalStore.isMenuEnabled(menuPath)
+  // 首先检查医疗机构是否激活
+  if (!hospitalStore.isMenuEnabled(menuPath)) {
+    return false
+  }
+  // 管理员和维护者有所有权限
+  if (isAdmin.value) {
+    return true
+  }
+  // 普通用户检查菜单权限
+  return userStore.hasMenuPermission(menuPath)
+}
+
+// Check if sub-menu should be visible (at least one child is permitted)
+const isSubMenuVisible = (childPaths: string[]) => {
+  if (isAdmin.value) return true
+  return childPaths.some(path => userStore.hasMenuPermission(path))
 }
 
 const activeMenu = computed(() => {
@@ -265,11 +312,17 @@ const activeMenu = computed(() => {
   if (path.startsWith('/dimension-items')) {
     return '/dimension-items'
   }
+  if (path.startsWith('/cost-benchmarks')) {
+    return '/cost-benchmarks'
+  }
   if (path.startsWith('/calculation-workflows')) {
     return '/calculation-workflows'
   }
   if (path.startsWith('/calculation-tasks')) {
     return '/calculation-tasks'
+  }
+  if (path.startsWith('/classification-plans')) {
+    return '/classification-plans'
   }
   if (path.startsWith('/results')) {
     return '/results'
@@ -279,6 +332,15 @@ const activeMenu = computed(() => {
   }
   if (path.startsWith('/hospitals')) {
     return '/hospitals'
+  }
+  if (path.startsWith('/data-issues')) {
+    return '/data-issues'
+  }
+  if (path.startsWith('/ai-config')) {
+    return '/ai-config'
+  }
+  if (path.startsWith('/roles')) {
+    return '/roles'
   }
   return path
 })
@@ -321,10 +383,15 @@ onMounted(async () => {
 <style scoped>
 .layout-container {
   height: 100vh;
-  transform: scale(0.75);
-  transform-origin: top left;
-  width: 133.33%; /* 100% / 0.75 */
-  height: 133.33vh; /* 100vh / 0.75 */
+  width: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.layout-body {
+  flex: 1;
+  overflow: hidden;
 }
 
 .layout-header {
@@ -402,10 +469,14 @@ onMounted(async () => {
 .layout-aside {
   background: #fff;
   border-right: 1px solid #e4e7ed;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .layout-menu {
   border-right: none;
+  height: auto;
+  min-height: 100%;
 }
 
 /* 增强菜单项高亮效果 */
@@ -455,5 +526,9 @@ onMounted(async () => {
 .layout-main {
   background: #f0f2f5;
   padding: 10px;
+  overflow-y: auto;
+  height: calc(100vh - 60px);
 }
+
+
 </style>

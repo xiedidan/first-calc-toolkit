@@ -1,275 +1,245 @@
 # ============================================
-# 医院科室业务价值评估工具 - 离线部署包构建脚本
-# 适用于: Windows 11 + Docker Desktop
+# Hospital Department Value Assessment Tool - Offline Package Build Script
+# Simplified version: Export entire public schema
 # ============================================
+
+param([int]$StartFrom = 1)
 
 $ErrorActionPreference = "Stop"
 
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "  离线部署包构建工具" -ForegroundColor Cyan
+Write-Host "  Offline Package Build Tool" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# 检查Docker是否运行
-Write-Host ">>> 检查Docker环境..." -ForegroundColor Yellow
+# Check Docker
+Write-Host ">>> Checking Docker..." -ForegroundColor Yellow
 try {
-    docker version | Out-Null
-    Write-Host "✓ Docker运行正常" -ForegroundColor Green
+    $null = docker version 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "Docker failed" }
+    Write-Host "Docker OK" -ForegroundColor Green
 } catch {
-    Write-Host "✗ Docker未运行，请启动Docker Desktop" -ForegroundColor Red
+    Write-Host "Docker not running" -ForegroundColor Red
     exit 1
 }
 
-# 设置版本号
 $VERSION = "1.0.0"
-
-Write-Host ">>> 构建版本: $VERSION" -ForegroundColor Cyan
-Write-Host ""
-
-# 创建输出目录
 $PACKAGE_DIR = "offline-package"
 $IMAGES_DIR = "$PACKAGE_DIR\images"
 $DATABASE_DIR = "$PACKAGE_DIR\database"
 $CONFIG_DIR = "$PACKAGE_DIR\config"
 $SCRIPTS_DIR = "$PACKAGE_DIR\scripts"
-$DOCS_DIR = "$PACKAGE_DIR\docs"
 
-Write-Host ">>> 创建目录结构..." -ForegroundColor Yellow
-New-Item -ItemType Directory -Force -Path $IMAGES_DIR | Out-Null
-New-Item -ItemType Directory -Force -Path $DATABASE_DIR | Out-Null
-New-Item -ItemType Directory -Force -Path $CONFIG_DIR | Out-Null
-New-Item -ItemType Directory -Force -Path $SCRIPTS_DIR | Out-Null
-New-Item -ItemType Directory -Force -Path $DOCS_DIR | Out-Null
-Write-Host "✓ 目录创建完成" -ForegroundColor Green
-Write-Host ""
-
-# 步骤1: 构建Docker镜像
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "  步骤 1/5: 构建Docker镜像" -ForegroundColor Cyan
-Write-Host "==========================================" -ForegroundColor Cyan
-
-
-# 构建后端镜像
-Write-Host ">>> 构建后端镜像..." -ForegroundColor Yellow
-docker build --platform linux/amd64 -t hospital-backend:latest ./backend
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "✗ 后端镜像构建失败" -ForegroundColor Red
-    exit 1
+if ($StartFrom -le 1) {
+    if (Test-Path $PACKAGE_DIR) { Remove-Item -Path $PACKAGE_DIR -Recurse -Force }
+    New-Item -ItemType Directory -Path $IMAGES_DIR, $DATABASE_DIR, $CONFIG_DIR, $SCRIPTS_DIR -Force | Out-Null
 }
-Write-Host "✓ 后端镜像构建完成" -ForegroundColor Green
 
-# 构建前端镜像
-Write-Host ">>> 构建前端镜像..." -ForegroundColor Yellow
-docker build --platform linux/amd64 -t hospital-frontend:latest ./frontend
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "✗ 前端镜像构建失败" -ForegroundColor Red
-    exit 1
+# Step 1: Pull images
+if ($StartFrom -le 1) {
+Write-Host "Step 1/5: Pull base images" -ForegroundColor Cyan
+Write-Host "Pulling python:3.12..." -ForegroundColor Yellow
+docker pull python:3.12
+if ($LASTEXITCODE -ne 0) { Write-Host "Warning: Failed to pull python:3.12" -ForegroundColor Yellow }
+
+Write-Host "Pulling node:18-alpine..." -ForegroundColor Yellow
+docker pull node:18-alpine
+if ($LASTEXITCODE -ne 0) { Write-Host "Warning: Failed to pull node:18-alpine" -ForegroundColor Yellow }
+
+Write-Host "Pulling nginx:alpine..." -ForegroundColor Yellow
+docker pull nginx:alpine
+if ($LASTEXITCODE -ne 0) { Write-Host "Warning: Failed to pull nginx:alpine" -ForegroundColor Yellow }
+
+Write-Host "Images ready" -ForegroundColor Green
 }
-Write-Host "✓ 前端镜像构建完成" -ForegroundColor Green
 
-# 拉取Redis镜像
-Write-Host ">>> 拉取Redis镜像..." -ForegroundColor Yellow
+# Step 2: Build images
+if ($StartFrom -le 2) {
+Write-Host "Step 2/5: Build Docker images" -ForegroundColor Cyan
+
+Write-Host "Building backend..." -ForegroundColor Yellow
+docker build --platform linux/amd64 -t hospital-backend:latest .\backend
+if ($LASTEXITCODE -ne 0) { Write-Host "Error: Backend build failed" -ForegroundColor Red; exit 1 }
+
+Write-Host "Building frontend..." -ForegroundColor Yellow
+docker build --platform linux/amd64 -t hospital-frontend:latest .\frontend
+if ($LASTEXITCODE -ne 0) { Write-Host "Error: Frontend build failed" -ForegroundColor Red; exit 1 }
+
+Write-Host "Pulling redis..." -ForegroundColor Yellow
 docker pull redis:7-alpine
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "✗ Redis镜像拉取失败" -ForegroundColor Red
+if ($LASTEXITCODE -ne 0) { Write-Host "Warning: Failed to pull redis" -ForegroundColor Yellow }
+
+Write-Host "Images built" -ForegroundColor Green
+}
+
+# Step 3: Export images
+if ($StartFrom -le 3) {
+Write-Host "Step 3/5: Export Docker images" -ForegroundColor Cyan
+
+Write-Host "Exporting backend..." -ForegroundColor Yellow
+docker save hospital-backend:latest -o "$IMAGES_DIR\backend.tar"
+Write-Host "Compressing backend..." -ForegroundColor Yellow
+& 7z a "$IMAGES_DIR\backend.tar.gz" "$IMAGES_DIR\backend.tar" -mx=1 > $null
+Remove-Item "$IMAGES_DIR\backend.tar" -Force
+
+Write-Host "Exporting frontend..." -ForegroundColor Yellow
+docker save hospital-frontend:latest -o "$IMAGES_DIR\frontend.tar"
+Write-Host "Compressing frontend..." -ForegroundColor Yellow
+& 7z a "$IMAGES_DIR\frontend.tar.gz" "$IMAGES_DIR\frontend.tar" -mx=1 > $null
+Remove-Item "$IMAGES_DIR\frontend.tar" -Force
+
+Write-Host "Exporting redis..." -ForegroundColor Yellow
+docker save redis:7-alpine -o "$IMAGES_DIR\redis.tar"
+Write-Host "Compressing redis..." -ForegroundColor Yellow
+& 7z a "$IMAGES_DIR\redis.tar.gz" "$IMAGES_DIR\redis.tar" -mx=1 > $null
+Remove-Item "$IMAGES_DIR\redis.tar" -Force
+
+Write-Host "Images exported" -ForegroundColor Green
+}
+
+
+# Step 4: Export database
+if ($StartFrom -le 4) {
+Write-Host "Step 4/5: Export database" -ForegroundColor Cyan
+
+if (Test-Path "backend\.env") {
+    # Read DATABASE_URL (skip comments)
+    $envLine = Get-Content "backend\.env" | Where-Object { $_ -notmatch '^\s*#' -and $_ -match 'DATABASE_URL=' } | Select-Object -First 1
+    
+    if ($envLine -match 'DATABASE_URL=postgresql://([^:]+):([^@]+)@([^:]+):([0-9]+)/(.+)') {
+        $DB_USER = $matches[1]
+        $DB_PASSWORD = $matches[2]
+        $DB_HOST = $matches[3]
+        $DB_PORT = $matches[4]
+        $DB_NAME = $matches[5]
+        
+        if ($DB_HOST -eq "host.docker.internal") { $DB_HOST = "localhost" }
+        
+        Write-Host "Database: ${DB_HOST}:${DB_PORT}/${DB_NAME}" -ForegroundColor Cyan
+        
+        # Find pg_dump
+        $pgDumpPath = $null
+        $paths = @(
+            "C:\Program Files\PostgreSQL\*\bin\pg_dump.exe",
+            "C:\Program Files (x86)\PostgreSQL\*\bin\pg_dump.exe",
+            "C:\software\PostgreSQL\*\bin\pg_dump.exe"
+        )
+        foreach ($pattern in $paths) {
+            $found = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) {
+                $pgDumpPath = $found.FullName
+                break
+            }
+        }
+        if (-not $pgDumpPath) {
+            $pgDumpPath = (Get-Command pg_dump -ErrorAction SilentlyContinue).Source
+        }
+        
+        if ($pgDumpPath) {
+            $env:PGPASSWORD = $DB_PASSWORD
+            
+            Write-Host "Exporting public schema..." -ForegroundColor Yellow
+            & $pgDumpPath `
+                -h $DB_HOST `
+                -p $DB_PORT `
+                -U $DB_USER `
+                -d $DB_NAME `
+                -n public `
+                -f "$DATABASE_DIR\database.sql" `
+                --no-owner `
+                --no-acl
+            
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "Compressing database..." -ForegroundColor Yellow
+                & 7z a "$DATABASE_DIR\database.sql.gz" "$DATABASE_DIR\database.sql" -mx=9 > $null
+                if ($LASTEXITCODE -eq 0) {
+                    Remove-Item "$DATABASE_DIR\database.sql" -Force
+                    $dbSize = [math]::Round((Get-Item "$DATABASE_DIR\database.sql.gz").Length / 1MB, 2)
+                    Write-Host "Database exported ($dbSize MB)" -ForegroundColor Green
+                } else {
+                    Write-Host "Compression failed, keeping uncompressed" -ForegroundColor Yellow
+                    $dbSize = [math]::Round((Get-Item "$DATABASE_DIR\database.sql").Length / 1MB, 2)
+                    Write-Host "Database exported ($dbSize MB, uncompressed)" -ForegroundColor Green
+                }
+            } else {
+                Write-Host "Export failed" -ForegroundColor Red
+                exit 1
+            }
+        } else {
+            Write-Host "pg_dump not found" -ForegroundColor Red
+            exit 1
+        }
+    } else {
+        Write-Host "Cannot parse DATABASE_URL" -ForegroundColor Red
+        exit 1
+    }
+} else {
+    Write-Host "backend\.env not found" -ForegroundColor Red
     exit 1
 }
-Write-Host "✓ Redis镜像拉取完成" -ForegroundColor Green
-Write-Host ""
-
-# 步骤2: 导出Docker镜像
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "  步骤 2/5: 导出Docker镜像" -ForegroundColor Cyan
-Write-Host "==========================================" -ForegroundColor Cyan
-
-# 导出后端镜像
-Write-Host ">>> 导出后端镜像..." -ForegroundColor Yellow
-docker save hospital-backend:latest | gzip > "$IMAGES_DIR\backend.tar.gz"
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "✗ 后端镜像导出失败" -ForegroundColor Red
-    exit 1
 }
-$backendSize = (Get-Item "$IMAGES_DIR\backend.tar.gz").Length / 1MB
-Write-Host "✓ 后端镜像导出完成 ($([math]::Round($backendSize, 2)) MB)" -ForegroundColor Green
 
-# 导出前端镜像
-Write-Host ">>> 导出前端镜像..." -ForegroundColor Yellow
-docker save hospital-frontend:latest | gzip > "$IMAGES_DIR\frontend.tar.gz"
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "✗ 前端镜像导出失败" -ForegroundColor Red
-    exit 1
-}
-$frontendSize = (Get-Item "$IMAGES_DIR\frontend.tar.gz").Length / 1MB
-Write-Host "✓ 前端镜像导出完成 ($([math]::Round($frontendSize, 2)) MB)" -ForegroundColor Green
 
-# 导出Redis镜像
-Write-Host ">>> 导出Redis镜像..." -ForegroundColor Yellow
-docker save redis:7-alpine | gzip > "$IMAGES_DIR\redis.tar.gz"
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "✗ Redis镜像导出失败" -ForegroundColor Red
-    exit 1
-}
-$redisSize = (Get-Item "$IMAGES_DIR\redis.tar.gz").Length / 1MB
-Write-Host "✓ Redis镜像导出完成 ($([math]::Round($redisSize, 2)) MB)" -ForegroundColor Green
-Write-Host ""
+# Step 5: Create package
+if ($StartFrom -le 5) {
+Write-Host "Step 5/5: Create final package" -ForegroundColor Cyan
 
-# 步骤3: 导出数据库数据
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "  步骤 3/5: 导出数据库数据" -ForegroundColor Cyan
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "⚠ 数据库导出需要手动执行" -ForegroundColor Yellow
-Write-Host "  如果需要导出数据库，请手动执行以下命令:" -ForegroundColor Gray
-Write-Host "  pg_dump -h localhost -p 5432 -U admin -d hospital_value --clean --if-exists --no-owner --no-privileges -f $DATABASE_DIR\hospital_value.sql" -ForegroundColor Gray
-Write-Host "  gzip $DATABASE_DIR\hospital_value.sql" -ForegroundColor Gray
-Write-Host ""
-
-# 步骤4: 复制配置文件和脚本
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "  步骤 4/5: 打包配置文件和脚本" -ForegroundColor Cyan
-Write-Host "==========================================" -ForegroundColor Cyan
-
-# 复制Docker Compose配置
-Write-Host ">>> 复制配置文件..." -ForegroundColor Yellow
+# Copy config files
 if (Test-Path "docker-compose.offline.yml") {
     Copy-Item "docker-compose.offline.yml" "$CONFIG_DIR\" -Force
-    Write-Host "✓ 复制 docker-compose.offline.yml" -ForegroundColor Green
 }
-
-# 复制环境变量模板
 if (Test-Path "backend\.env.offline.template") {
     Copy-Item "backend\.env.offline.template" "$CONFIG_DIR\" -Force
-    Write-Host "✓ 复制 .env.offline.template" -ForegroundColor Green
 }
 
-# 复制部署脚本
-Write-Host ">>> 复制部署脚本..." -ForegroundColor Yellow
-if (Test-Path "scripts\deploy-offline.sh") {
-    Copy-Item "scripts\deploy-offline.sh" "$SCRIPTS_DIR\" -Force
-    Write-Host "✓ 复制 deploy-offline.sh" -ForegroundColor Green
-}
-if (Test-Path "scripts\load-images.sh") {
-    Copy-Item "scripts\load-images.sh" "$SCRIPTS_DIR\" -Force
-    Write-Host "✓ 复制 load-images.sh" -ForegroundColor Green
-}
-if (Test-Path "scripts\init-database.sh") {
-    Copy-Item "scripts\init-database.sh" "$SCRIPTS_DIR\" -Force
-    Write-Host "✓ 复制 init-database.sh" -ForegroundColor Green
-}
-if (Test-Path "scripts\check-prerequisites.sh") {
-    Copy-Item "scripts\check-prerequisites.sh" "$SCRIPTS_DIR\" -Force
-    Write-Host "✓ 复制 check-prerequisites.sh" -ForegroundColor Green
+# Copy scripts
+$scripts = @("deploy-offline.sh", "load-images.sh", "init-database.sh")
+foreach ($script in $scripts) {
+    if (Test-Path "scripts\$script") {
+        Copy-Item "scripts\$script" "$SCRIPTS_DIR\" -Force
+    }
 }
 
-# 复制文档
-Write-Host ">>> 复制文档..." -ForegroundColor Yellow
-if (Test-Path "离线部署方案.md") {
-    Copy-Item "离线部署方案.md" "$DOCS_DIR\" -Force
-    Write-Host "✓ 复制 离线部署方案.md" -ForegroundColor Green
-}
-if (Test-Path "OFFLINE_DEPLOYMENT_GUIDE.md") {
-    Copy-Item "OFFLINE_DEPLOYMENT_GUIDE.md" "$DOCS_DIR\" -Force
-    Write-Host "✓ 复制 OFFLINE_DEPLOYMENT_GUIDE.md" -ForegroundColor Green
-}
+# Create README
+$readme = @"
+# Hospital Value Assessment Tool - Offline Package v$VERSION
 
-# 创建README
-Write-Host ">>> 创建README..." -ForegroundColor Yellow
-$readmeContent = @"
-# 医院科室业务价值评估工具 - 离线部署包 v$VERSION
+## Contents
+- images/ - Docker images
+- database/ - Database dump (public schema)
+- config/ - Configuration files
+- scripts/ - Deployment scripts
 
-## 部署包内容
+## Quick Start
+1. Extract: tar -xzf package.tar.gz
+2. Load images: bash scripts/load-images.sh
+3. Configure: cp config/.env.offline.template .env
+4. Init database: bash scripts/init-database.sh
+5. Start: docker-compose -f config/docker-compose.offline.yml up -d
 
-- images/ - Docker镜像文件（约500MB）
-- database/ - 数据库数据文件
-- config/ - 配置文件
-- scripts/ - 部署脚本
-- docs/ - 部署文档
-
-## 快速开始
-
-### 1. 解压部署包
-
-bash
-tar -xzf hospital-value-toolkit-offline-v$VERSION.tar.gz
-cd offline-package
-
-
-### 2. 导入Docker镜像
-
-bash
-bash scripts/load-images.sh
-
-
-### 3. 配置环境
-
-bash
-cp config/.env.offline.template .env
-vi .env
-
-
-### 4. 初始化数据库
-
-bash
-bash scripts/init-database.sh
-
-
-### 5. 启动服务
-
-bash
-docker-compose -f config/docker-compose.offline.yml up -d
-
-
-### 6. 访问系统
-
-- 前端: http://localhost:80
-- 后端API: http://localhost:8000/docs
-
-## 详细说明
-
-请参考 docs/OFFLINE_DEPLOYMENT_GUIDE.md 获取详细的部署指南。
-
-## 系统要求
-
-- Linux服务器
-- Docker 20.10+
-- Docker Compose 2.0+
-- PostgreSQL 数据库（已有实例）
-- 至少8GB内存
-- 至少50GB磁盘空间
+## Access
+- Frontend: http://localhost:80
+- Backend: http://localhost:8000/docs
 "@
+$readmePath = Join-Path (Get-Location) "$PACKAGE_DIR\README.md"
+[System.IO.File]::WriteAllText($readmePath, $readme, [System.Text.UTF8Encoding]::new($false))
 
-$readmeContent | Out-File -FilePath "$PACKAGE_DIR\README.md" -Encoding UTF8
-Write-Host "✓ 创建 README.md" -ForegroundColor Green
-Write-Host ""
-
-# 步骤5: 生成最终部署包
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "  步骤 5/5: 生成最终部署包" -ForegroundColor Cyan
-Write-Host "==========================================" -ForegroundColor Cyan
-
+# Create package
 $PACKAGE_NAME = "hospital-value-toolkit-offline-v$VERSION.tar.gz"
+tar -czf $PACKAGE_NAME $PACKAGE_DIR
 
-Write-Host ">>> 打包文件..." -ForegroundColor Yellow
-Write-Host "⚠ 需要手动打包" -ForegroundColor Yellow
-Write-Host "  请执行以下命令之一:" -ForegroundColor Gray
-Write-Host "  1. 使用WSL: wsl tar -czf $PACKAGE_NAME $PACKAGE_DIR" -ForegroundColor Gray
-Write-Host "  2. 使用Git Bash: tar -czf $PACKAGE_NAME $PACKAGE_DIR" -ForegroundColor Gray
-Write-Host "  3. 使用7-Zip等工具手动压缩 $PACKAGE_DIR 目录" -ForegroundColor Gray
-Write-Host ""
-
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "  构建完成！" -ForegroundColor Cyan
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "已创建目录: $PACKAGE_DIR" -ForegroundColor Green
-Write-Host "包含以下内容:" -ForegroundColor Gray
-Write-Host "  - Docker镜像文件 (images/)" -ForegroundColor Gray
-Write-Host "  - 配置文件 (config/)" -ForegroundColor Gray
-Write-Host "  - 部署脚本 (scripts/)" -ForegroundColor Gray
-Write-Host "  - 文档 (docs/)" -ForegroundColor Gray
-Write-Host ""
-Write-Host "下一步:" -ForegroundColor Yellow
-Write-Host "1. 如需导出数据库，请手动执行pg_dump命令" -ForegroundColor Gray
-Write-Host "2. 打包 $PACKAGE_DIR 目录为 $PACKAGE_NAME" -ForegroundColor Gray
-Write-Host "3. 将部署包传输到目标Linux服务器" -ForegroundColor Gray
-Write-Host "4. 在目标服务器上解压并执行部署脚本" -ForegroundColor Gray
-Write-Host ""
+if ($LASTEXITCODE -eq 0) {
+    $packageSize = [math]::Round((Get-Item $PACKAGE_NAME).Length / 1MB, 2)
+    Write-Host ""
+    Write-Host "==========================================" -ForegroundColor Green
+    Write-Host "  Build Complete!" -ForegroundColor Green
+    Write-Host "==========================================" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "Package: $PACKAGE_NAME" -ForegroundColor Cyan
+    Write-Host "Size: $packageSize MB" -ForegroundColor Cyan
+    Write-Host ""
+} else {
+    Write-Host "Package creation failed" -ForegroundColor Red
+    exit 1
+}
+}

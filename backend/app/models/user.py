@@ -27,9 +27,11 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     status = Column(Enum(UserStatus), default=UserStatus.ACTIVE, nullable=False)
     hospital_id = Column(Integer, ForeignKey("hospitals.id", ondelete="SET NULL"), nullable=True, index=True, comment="所属医疗机构ID，NULL表示超级用户")
+    department_id = Column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True, comment="所属科室ID，科室用户必填")
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationships
     roles = relationship("Role", secondary="user_roles", back_populates="users")
     hospital = relationship("Hospital", back_populates="users")
+    department = relationship("Department", backref="users")

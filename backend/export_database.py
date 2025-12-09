@@ -31,9 +31,12 @@ def export_database(database_url, output_file):
     
     # 获取所有表
     inspector = inspect(engine)
-    tables = inspector.get_table_names()
+    all_tables = inspector.get_table_names()
     
-    print(f"找到 {len(tables)} 个表")
+    # 排除 alembic_version 表（迁移版本信息不应导出）
+    tables = [t for t in all_tables if t != 'alembic_version']
+    
+    print(f"找到 {len(all_tables)} 个表（排除 alembic_version 后剩余 {len(tables)} 个）")
     
     # 导出数据
     data = {

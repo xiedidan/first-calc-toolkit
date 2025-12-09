@@ -13,6 +13,8 @@ export interface LoginResponse {
   token_type: string
 }
 
+export type RoleType = 'department_user' | 'hospital_user' | 'admin' | 'maintainer'
+
 export interface UserInfo {
   id: number
   username: string
@@ -21,9 +23,14 @@ export interface UserInfo {
   status: string
   created_at: string
   updated_at: string
-  role: 'admin' | 'user'
+  role_id: number
+  role_name: string
+  role_type: RoleType
   hospital_id?: number
   hospital_name?: string
+  department_id?: number
+  department_name?: string
+  menu_permissions?: string[]
 }
 
 /**
