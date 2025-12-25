@@ -16,6 +16,12 @@ const request = axios.create({
 // Request interceptor
 request.interceptors.request.use(
   (config) => {
+    // Check for undefined in URL path
+    if (config.url && config.url.includes('undefined')) {
+      console.error('Invalid URL detected:', config.url)
+      return Promise.reject(new Error(`无效的请求路径: ${config.url}`))
+    }
+    
     // Add token to headers
     const token = localStorage.getItem('access_token')
     if (token) {

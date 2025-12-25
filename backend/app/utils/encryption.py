@@ -118,13 +118,23 @@ def mask_api_key(encrypted_api_key: str) -> str:
         encrypted_api_key: 加密的API密钥
         
     Returns:
-        掩码后的显示字符串（如 "****abcd"）
+        掩码后的显示字符串（如 "sk-****abcd"）
     """
     if not encrypted_api_key:
         return "****"
     
-    # 显示最后4个字符，其余用星号代替
-    if len(encrypted_api_key) > 4:
-        return "****" + encrypted_api_key[-4:]
-    else:
+    try:
+        # 先解密获取原始密钥
+        original_key = decrypt_api_key(encrypted_api_key)
+        if not original_key:
+            return "****"
+        
+        # 显示前缀和最后4个字符，中间用星号代替
+        if len(original_key) > 8:
+            return original_key[:5] + "****" + original_key[-4:]
+        elif len(original_key) > 4:
+            return "****" + original_key[-4:]
+        else:
+            return "****"
+    except Exception:
         return "****"

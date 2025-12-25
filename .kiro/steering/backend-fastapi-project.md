@@ -179,8 +179,11 @@
 - 激活环境：`conda activate hospital-backend`
 - 初始化后可持续使用 conda 和 python 命令
 
+### 数据库链接
+- backend/.env中的DATABASE_URL
+
 ### PostgreSQL 客户端
-- 连接命令：`& "C:\software\PostgreSQL\18\bin\psql.exe" -h 47.108.227.254 -p 50016 -U root -d hospital_value -P pager=off -c "SQL"`
+- 连接命令：`$env:PGPASSWORD='ssPgSql123'; & "C:\software\PostgreSQL\18\bin\psql.exe" -h 47.108.227.254 -p 50016 -U postgres -d hospital_value -P pager=off`
 
 ## 业务逻辑与数据结构设计
 

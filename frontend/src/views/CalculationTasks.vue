@@ -253,14 +253,55 @@
           </el-select>
         </el-form-item>
 
-        <el-form-item label="计算周期" prop="period">
-          <el-date-picker
-            v-model="taskForm.period"
-            type="month"
-            placeholder="选择月份"
-            format="YYYY-MM"
-            value-format="YYYY-MM"
-          />
+        <el-form-item label="计算周期">
+          <el-radio-group v-model="taskForm.periodMode">
+            <el-radio value="single">单月</el-radio>
+            <el-radio value="range">范围</el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-form-item v-if="taskForm.periodMode === 'single'" label=" " prop="period">
+          <div style="display: flex; align-items: center;">
+            <el-date-picker
+              v-model="taskForm.period"
+              type="month"
+              placeholder="选择月份"
+              format="YYYY-MM"
+              value-format="YYYY-MM"
+              style="width: 140px;"
+            />
+            <el-checkbox v-model="taskForm.createMomTask" style="margin-left: 16px">
+              环比月份
+            </el-checkbox>
+            <el-checkbox v-model="taskForm.createYoyTask" style="margin-left: 8px">
+              同比月份
+            </el-checkbox>
+          </div>
+        </el-form-item>
+
+        <el-form-item v-else label=" " prop="period">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <el-date-picker
+              v-model="taskForm.startPeriod"
+              type="month"
+              placeholder="开始月份"
+              format="YYYY-MM"
+              value-format="YYYY-MM"
+              style="width: 140px;"
+            />
+            <span>至</span>
+            <el-date-picker
+              v-model="taskForm.endPeriod"
+              type="month"
+              placeholder="结束月份"
+              format="YYYY-MM"
+              value-format="YYYY-MM"
+              style="width: 140px;"
+            />
+            <span v-if="rangeMonthCount > 0" style="color: #909399; font-size: 12px; margin-left: 6px;">
+              共 {{ rangeMonthCount }} 个月
+            </span>
+          </div>
         </el-form-item>
 
         <el-form-item label="科室范围" prop="department_ids">
@@ -327,15 +368,33 @@ const taskFormRef = ref<FormInstance>()
 const taskForm = reactive({
   model_version_id: null as number | null,
   workflow_id: null as number | null,
+  periodMode: 'single' as 'single' | 'range',
   period: '',
+  startPeriod: '',
+  endPeriod: '',
   department_ids: [] as number[],
-  description: ''
+  description: '',
+  createMomTask: false,
+  createYoyTask: false
 })
 
 const taskRules: FormRules = {
   model_version_id: [{ required: true, message: '请选择模型版本', trigger: 'change' }],
   workflow_id: [{ required: true, message: '请选择计算流程', trigger: 'change' }],
-  period: [{ required: true, message: '请选择计算周期', trigger: 'change' }]
+  period: [{ 
+    validator: (rule, value, callback) => {
+      if (taskForm.periodMode === 'single' && !taskForm.period) {
+        callback(new Error('请选择计算周期'))
+      } else if (taskForm.periodMode === 'range' && (!taskForm.startPeriod || !taskForm.endPeriod)) {
+        callback(new Error('请选择开始和结束月份'))
+      } else if (taskForm.periodMode === 'range' && taskForm.startPeriod > taskForm.endPeriod) {
+        callback(new Error('开始月份不能大于结束月份'))
+      } else {
+        callback()
+      }
+    }, 
+    trigger: 'change' 
+  }]
 }
 
 // 计算属性
@@ -343,6 +402,34 @@ const filteredWorkflows = computed(() => {
   if (!taskForm.model_version_id) return []
   return workflows.value.filter(w => w.version_id === taskForm.model_version_id)
 })
+
+// 计算范围模式下的月份数量
+const rangeMonthCount = computed(() => {
+  if (!taskForm.startPeriod || !taskForm.endPeriod) return 0
+  if (taskForm.startPeriod > taskForm.endPeriod) return 0
+  return getMonthsBetween(taskForm.startPeriod, taskForm.endPeriod).length
+})
+
+// 获取两个月份之间的所有月份列表
+const getMonthsBetween = (start: string, end: string): string[] => {
+  const months: string[] = []
+  const [startYear, startMonth] = start.split('-').map(Number)
+  const [endYear, endMonth] = end.split('-').map(Number)
+  
+  let year = startYear
+  let month = startMonth
+  
+  while (year < endYear || (year === endYear && month <= endMonth)) {
+    months.push(`${year}-${String(month).padStart(2, '0')}`)
+    month++
+    if (month > 12) {
+      month = 1
+      year++
+    }
+  }
+  
+  return months
+}
 
 // 方法
 const loadTasks = async () => {
@@ -398,8 +485,13 @@ const showCreateDialog = async () => {
   createDialogVisible.value = true
   taskForm.model_version_id = null
   taskForm.workflow_id = null
+  taskForm.periodMode = 'single'
+  taskForm.startPeriod = ''
+  taskForm.endPeriod = ''
   taskForm.department_ids = []
   taskForm.description = ''
+  taskForm.createMomTask = true
+  taskForm.createYoyTask = true
   
   // 加载系统设置，获取当期年月
   try {
@@ -422,6 +514,23 @@ const onVersionChange = () => {
   taskForm.workflow_id = null
 }
 
+// 计算环比月份（上月）
+const getMomPeriod = (period: string) => {
+  if (!period) return ''
+  const [year, month] = period.split('-').map(Number)
+  if (month === 1) {
+    return `${year - 1}-12`
+  }
+  return `${year}-${String(month - 1).padStart(2, '0')}`
+}
+
+// 计算同比月份（去年同月）
+const getYoyPeriod = (period: string) => {
+  if (!period) return ''
+  const [year, month] = period.split('-').map(Number)
+  return `${year - 1}-${String(month).padStart(2, '0')}`
+}
+
 const createTask = async () => {
   if (!taskFormRef.value) return
   
@@ -430,14 +539,75 @@ const createTask = async () => {
     
     submitting.value = true
     try {
-      await createCalculationTask({
+      const baseParams = {
         model_version_id: taskForm.model_version_id!,
         workflow_id: taskForm.workflow_id || undefined,
-        period: taskForm.period,
         department_ids: taskForm.department_ids,
         description: taskForm.description
-      })
-      ElMessage.success('计算任务已创建')
+      }
+      
+      let taskCount = 0
+      
+      if (taskForm.periodMode === 'range') {
+        // 范围模式：创建所有月份的任务
+        const periods = getMonthsBetween(taskForm.startPeriod, taskForm.endPeriod)
+        for (const period of periods) {
+          try {
+            await createCalculationTask({
+              ...baseParams,
+              period,
+              description: baseParams.description || `${period} 批量任务`
+            })
+            taskCount++
+          } catch (e: any) {
+            console.warn(`创建 ${period} 任务失败:`, e)
+          }
+        }
+      } else {
+        // 单月模式
+        // 创建主任务
+        await createCalculationTask({
+          ...baseParams,
+          period: taskForm.period
+        })
+        taskCount++
+        
+        // 创建环比月份任务
+        if (taskForm.createMomTask) {
+          const momPeriod = getMomPeriod(taskForm.period)
+          if (momPeriod) {
+            try {
+              await createCalculationTask({
+                ...baseParams,
+                period: momPeriod,
+                description: baseParams.description ? `${baseParams.description}（环比）` : `${taskForm.period} 环比任务`
+              })
+              taskCount++
+            } catch (e: any) {
+              console.warn('创建环比任务失败:', e)
+            }
+          }
+        }
+        
+        // 创建同比月份任务
+        if (taskForm.createYoyTask) {
+          const yoyPeriod = getYoyPeriod(taskForm.period)
+          if (yoyPeriod) {
+            try {
+              await createCalculationTask({
+                ...baseParams,
+                period: yoyPeriod,
+                description: baseParams.description ? `${baseParams.description}（同比）` : `${taskForm.period} 同比任务`
+              })
+              taskCount++
+            } catch (e: any) {
+              console.warn('创建同比任务失败:', e)
+            }
+          }
+        }
+      }
+      
+      ElMessage.success(`已创建 ${taskCount} 个计算任务`)
       createDialogVisible.value = false
     } catch (error: any) {
       ElMessage.error(error.response?.data?.detail || '创建任务失败')

@@ -13,6 +13,23 @@
       <!-- 搜索栏 -->
       <div class="search-form">
         <el-form :inline="true" :model="searchForm">
+          <el-form-item label="计算任务">
+            <el-select
+              v-model="searchForm.task_id"
+              placeholder="全部任务"
+              clearable
+              filterable
+              @change="handleSearch"
+              style="width: 280px;"
+            >
+              <el-option
+                v-for="task in taskList"
+                :key="task.task_id"
+                :label="`${task.task_id.substring(0, 8)}... (${task.workflow_name} - ${task.period})`"
+                :value="task.task_id"
+              />
+            </el-select>
+          </el-form-item>
           <el-form-item label="年月">
             <el-date-picker
               v-model="searchForm.period"
@@ -58,9 +75,20 @@
         @sort-change="handleSortChange"
       >
         <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="period" label="年月" width="120" sortable="custom" />
-        <el-table-column prop="department_code" label="科室代码" width="120" sortable="custom" />
-        <el-table-column prop="department_name" label="科室名称" min-width="180" sortable="custom" />
+        <el-table-column prop="period" label="年月" width="100" sortable="custom" />
+        <el-table-column prop="department_code" label="科室代码" width="100" sortable="custom" />
+        <el-table-column prop="department_name" label="科室名称" min-width="150" sortable="custom" />
+        <el-table-column label="计算任务" width="200">
+          <template #default="{ row }">
+            <span v-if="row.task_id">
+              {{ row.task_id.substring(0, 8) }}...
+              <el-tag v-if="row.workflow_name" size="small" type="info" style="margin-left: 4px;">
+                {{ row.workflow_name }}
+              </el-tag>
+            </span>
+            <span v-else class="text-muted">未关联</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="editReport(row)">
@@ -105,12 +133,16 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getAnalysisReports, deleteAnalysisReport, type AnalysisReport } from '@/api/analysis-reports'
+import { getAnalysisReports, deleteAnalysisReport, getAvailableTasks, type AnalysisReport, type CalculationTaskBrief } from '@/api/analysis-reports'
 import ReportEditModal from '@/components/ReportEditModal.vue'
 import ReportCreateModal from '@/components/ReportCreateModal.vue'
 
+// 计算任务列表
+const taskList = ref<CalculationTaskBrief[]>([])
+
 // 搜索表单
 const searchForm = reactive({
+  task_id: '' as string,
   period: '',
   department_code: '',
   department_name: ''
@@ -154,6 +186,9 @@ const loadReports = async () => {
     if (searchForm.department_name) {
       params.department_name = searchForm.department_name
     }
+    if (searchForm.task_id) {
+      params.task_id = searchForm.task_id
+    }
     if (sortParams.sort_by && sortParams.sort_order) {
       params.sort_by = sortParams.sort_by
       params.sort_order = sortParams.sort_order
@@ -177,11 +212,22 @@ const handleSearch = () => {
 
 // 重置搜索
 const resetSearch = () => {
+  searchForm.task_id = ''
   searchForm.period = ''
   searchForm.department_code = ''
   searchForm.department_name = ''
   pagination.page = 1
   loadReports()
+}
+
+// 加载计算任务列表
+const loadTasks = async () => {
+  try {
+    const res = await getAvailableTasks({ status: 'completed' })
+    taskList.value = res
+  } catch (error) {
+    console.error('加载计算任务失败', error)
+  }
 }
 
 // 排序变化
@@ -253,6 +299,7 @@ const handleCreated = () => {
 }
 
 onMounted(() => {
+  loadTasks()
   loadReports()
 })
 </script>
@@ -276,5 +323,10 @@ onMounted(() => {
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
+}
+
+.text-muted {
+  color: #909399;
+  font-size: 12px;
 }
 </style>

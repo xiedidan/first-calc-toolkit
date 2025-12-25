@@ -292,9 +292,9 @@ def _replace_sql_parameters(code: str, test_params: Optional[dict] = None) -> st
         # 如果没有提供测试参数，使用默认值
         test_params = {}
     
-    # 生成唯一的测试任务ID
+    # 生成唯一的测试任务ID - 使用UTC时间确保一致性
     unique_suffix = str(uuid.uuid4())[:8]  # 取UUID的前8位
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
     unique_task_id = f"test-task-{timestamp}-{unique_suffix}"
     
     # 设置默认值

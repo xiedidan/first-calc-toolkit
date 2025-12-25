@@ -21,7 +21,7 @@ class CalculationTask(Base):
     progress = Column(DECIMAL(5, 2), default=0, comment="进度百分比")
     description = Column(Text, comment="任务描述")
     error_message = Column(Text, comment="错误信息")
-    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+    created_at = Column(DateTime, default=datetime.utcnow, comment="创建时间")
     started_at = Column(DateTime, comment="开始时间")
     completed_at = Column(DateTime, comment="完成时间")
     created_by = Column(Integer, ForeignKey("users.id"), comment="创建人ID")
@@ -55,7 +55,7 @@ class CalculationResult(Base):
     original_weight = Column(DECIMAL(10, 4), comment="原始权重（未调整）")
     value = Column(DECIMAL(20, 4), comment="价值")
     ratio = Column(DECIMAL(10, 4), comment="占比")
-    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+    created_at = Column(DateTime, default=datetime.utcnow, comment="创建时间")
 
 
 class CalculationSummary(Base):
@@ -80,4 +80,4 @@ class CalculationSummary(Base):
     tech_value = Column(DECIMAL(20, 4), default=0, comment="医技价值")
     tech_ratio = Column(DECIMAL(10, 4), default=0, comment="医技占比")
     total_value = Column(DECIMAL(20, 4), default=0, comment="科室总价值")
-    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+    created_at = Column(DateTime, default=datetime.utcnow, comment="创建时间")

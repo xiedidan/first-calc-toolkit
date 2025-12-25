@@ -31,3 +31,4 @@ class ModelVersion(Base):
     calculation_tasks = relationship("CalculationTask", back_populates="model_version")
     classification_tasks = relationship("ClassificationTask", back_populates="model_version")
     cost_benchmarks = relationship("CostBenchmark", back_populates="version")
+    discipline_rules = relationship("DisciplineRule", back_populates="version")

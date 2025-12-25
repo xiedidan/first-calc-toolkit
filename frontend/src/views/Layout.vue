@@ -113,7 +113,7 @@
 
           <!-- 评估模型管理 -->
           <el-sub-menu 
-            v-if="isSubMenuVisible(['/model-versions', '/dimension-items', '/cost-benchmarks', '/calculation-workflows'])"
+            v-if="isSubMenuVisible(['/model-versions', '/dimension-items', '/cost-benchmarks', '/discipline-rules', '/calculation-workflows'])"
             index="model"
           >
             <template #title>
@@ -123,6 +123,7 @@
             <el-menu-item v-if="isMenuItemEnabled('/model-versions')" index="/model-versions">模型版本管理</el-menu-item>
             <el-menu-item v-if="isMenuItemEnabled('/dimension-items')" index="/dimension-items">维度目录管理</el-menu-item>
             <el-menu-item v-if="isMenuItemEnabled('/cost-benchmarks')" index="/cost-benchmarks">成本基准管理</el-menu-item>
+            <el-menu-item v-if="isMenuItemEnabled('/discipline-rules')" index="/discipline-rules">学科规则管理</el-menu-item>
             <el-menu-item v-if="isMenuItemEnabled('/calculation-workflows')" index="/calculation-workflows">计算流程管理</el-menu-item>
           </el-sub-menu>
 
@@ -164,11 +165,18 @@
             <span>ADV自动建模</span>
           </el-menu-item>
 
-          <!-- 智能问数系统 (未实现) -->
-          <el-menu-item v-if="isAdmin" index="/intelligent-query" disabled>
-            <el-icon><ChatDotRound /></el-icon>
-            <span>智能问数系统</span>
-          </el-menu-item>
+          <!-- 智能问数系统 -->
+          <el-sub-menu 
+            v-if="isSubMenuVisible(['/smart-data-qa', '/metric-assets'])"
+            index="intelligent-query"
+          >
+            <template #title>
+              <el-icon><ChatDotRound /></el-icon>
+              <span>智能问数系统</span>
+            </template>
+            <el-menu-item v-if="isMenuItemEnabled('/smart-data-qa')" index="/smart-data-qa">智能数据问答</el-menu-item>
+            <el-menu-item v-if="isMenuItemEnabled('/metric-assets')" index="/metric-assets">指标资产管理</el-menu-item>
+          </el-sub-menu>
 
           <!-- 运营分析报告 -->
           <el-sub-menu 
@@ -185,7 +193,7 @@
 
           <!-- 基础数据管理 -->
           <el-sub-menu 
-            v-if="isSubMenuVisible(['/departments', '/charge-items', '/reference-values', '/data-templates'])"
+            v-if="isSubMenuVisible(['/departments', '/charge-items', '/cost-reports', '/reference-values', '/data-templates'])"
             index="base-data"
           >
             <template #title>
@@ -194,6 +202,7 @@
             </template>
             <el-menu-item v-if="isMenuItemEnabled('/departments')" index="/departments">科室对照管理</el-menu-item>
             <el-menu-item v-if="isMenuItemEnabled('/charge-items')" index="/charge-items">收费项目管理</el-menu-item>
+            <el-menu-item v-if="isMenuItemEnabled('/cost-reports')" index="/cost-reports">成本报表管理</el-menu-item>
             <el-menu-item v-if="isMenuItemEnabled('/reference-values')" index="/reference-values">参考价值管理</el-menu-item>
             <el-menu-item v-if="isAdmin" index="/data-templates">数据模板管理</el-menu-item>
           </el-sub-menu>
@@ -314,6 +323,9 @@ const activeMenu = computed(() => {
   }
   if (path.startsWith('/cost-benchmarks')) {
     return '/cost-benchmarks'
+  }
+  if (path.startsWith('/discipline-rules')) {
+    return '/discipline-rules'
   }
   if (path.startsWith('/calculation-workflows')) {
     return '/calculation-workflows'

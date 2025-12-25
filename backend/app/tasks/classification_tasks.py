@@ -4,7 +4,7 @@ AI分类任务Celery任务
 import time
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Tuple
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -15,7 +15,8 @@ from app.database import SessionLocal
 from app.models.classification_task import ClassificationTask, TaskStatus
 from app.models.classification_plan import ClassificationPlan, PlanStatus
 from app.models.plan_item import PlanItem, ProcessingStatus
-from app.models.ai_config import AIConfig
+from app.models.ai_interface import AIInterface
+from app.models.ai_prompt_module import AIPromptModule, PromptModuleCode
 from app.models.model_node import ModelNode
 from app.models.model_version import ModelVersion
 from app.models.charge_item import ChargeItem
@@ -24,6 +25,75 @@ from app.utils.encryption import decrypt_api_key
 from app.utils.ai_interface import call_ai_classification_batch, AIClassificationError
 
 logger = logging.getLogger(__name__)
+
+
+def _get_classification_ai_config(db: Session, hospital_id: int) -> Tuple[str, str, str, str, str, float, int, int]:
+    """
+    获取分类任务的AI配置（使用ai_interfaces + ai_prompt_modules体系）
+    
+    Args:
+        db: 数据库会话
+        hospital_id: 医疗机构ID
+        
+    Returns:
+        (api_endpoint, api_key, model_name, system_prompt, user_prompt, call_delay, daily_limit, batch_size) 元组
+        
+    Raises:
+        ValueError: 如果没有找到有效的AI配置
+    """
+    # 查询分类模块配置
+    module = db.query(AIPromptModule).filter(
+        AIPromptModule.hospital_id == hospital_id,
+        AIPromptModule.module_code == PromptModuleCode.CLASSIFICATION
+    ).first()
+    
+    if not module:
+        raise ValueError(
+            "分类模块未配置，请先在「AI提示词模块」中配置分类模块（classification）"
+        )
+    
+    if not module.user_prompt:
+        raise ValueError(
+            "分类模块的用户提示词未配置，请在「AI提示词模块」中配置分类模块的提示词"
+        )
+    
+    if not module.ai_interface_id:
+        raise ValueError(
+            "分类模块未关联AI接口，请在「AI提示词模块」中为分类模块选择AI接口"
+        )
+    
+    # 查询关联的AI接口
+    ai_interface = db.query(AIInterface).filter(
+        AIInterface.id == module.ai_interface_id,
+        AIInterface.is_active == True
+    ).first()
+    
+    if not ai_interface:
+        raise ValueError(
+            "分类模块关联的AI接口不存在或已禁用，请在「AI接口管理」中检查配置"
+        )
+    
+    # 解密API密钥
+    try:
+        api_key = decrypt_api_key(ai_interface.api_key_encrypted)
+    except Exception as e:
+        raise ValueError(f"AI接口密钥解密失败: {str(e)}")
+    
+    logger.info(
+        f"[AI分类任务] 加载AI配置: interface_id={ai_interface.id}, "
+        f"module_code={PromptModuleCode.CLASSIFICATION}, model={ai_interface.model_name}"
+    )
+    
+    return (
+        ai_interface.api_endpoint,
+        api_key,
+        ai_interface.model_name,
+        module.system_prompt,
+        module.user_prompt,
+        float(ai_interface.call_delay or 1.0),
+        int(ai_interface.daily_limit or 10000),
+        20  # 默认批次大小
+    )
 
 
 @celery_app.task(bind=True, max_retries=0, time_limit=7200, soft_time_limit=7000)
@@ -67,23 +137,14 @@ def classify_items_task(
         logger.info(f"[AI分类任务] 任务 {task_id} 状态更新为 processing")
         
         # 2. 加载AI配置
-        ai_config = db.query(AIConfig).filter(
-            AIConfig.hospital_id == hospital_id
-        ).first()
-        
-        if not ai_config:
-            raise ValueError("AI配置不存在，请先在系统设置中配置AI接口")
-        
-        logger.info(f"[AI分类任务] 加载AI配置: endpoint={ai_config.api_endpoint}")
-        
-        # 3. 解密API密钥
         try:
-            api_key = decrypt_api_key(ai_config.api_key_encrypted)
-            logger.info(f"[AI分类任务] API密钥解密成功")
-        except Exception as e:
-            raise ValueError(f"API密钥解密失败: {str(e)}")
+            (api_endpoint, api_key, model_name, system_prompt, prompt_template,
+             call_delay, daily_limit, batch_size) = _get_classification_ai_config(db, hospital_id)
+            logger.info(f"[AI分类任务] 加载AI配置: endpoint={api_endpoint}, model={model_name}")
+        except ValueError as e:
+            raise ValueError(str(e))
         
-        # 4. 创建或获取分类预案
+        # 3. 创建或获取分类预案
         plan = db.query(ClassificationPlan).filter(
             ClassificationPlan.task_id == task_id
         ).first()
@@ -99,7 +160,7 @@ def classify_items_task(
             db.commit()
             logger.info(f"[AI分类任务] 创建分类预案 {plan.id}")
         
-        # 5. 查询待处理项目（pending或failed）
+        # 4. 查询待处理项目（pending或failed）
         pending_items = db.query(PlanItem).filter(
             PlanItem.plan_id == plan.id,
             PlanItem.processing_status.in_([ProcessingStatus.pending, ProcessingStatus.failed])
@@ -115,7 +176,7 @@ def classify_items_task(
         
         logger.info(f"[AI分类任务] 找到 {len(pending_items)} 个待处理项目")
         
-        # 6. 加载目标模型版本的末级维度
+        # 5. 加载目标模型版本的末级维度
         dimensions = db.query(ModelNode).filter(
             ModelNode.version_id == task.model_version_id,
             ModelNode.is_leaf == True
@@ -146,17 +207,12 @@ def classify_items_task(
                 "path": " / ".join(path_parts)
             })
         
-        # 7. 批量调用AI接口处理项目
+        # 6. 批量调用AI接口处理项目
         total_items = len(pending_items)
         processed_count = 0
         failed_count = 0
         
-        # 获取限流配置
-        call_delay = float(ai_config.call_delay or 1.0)
-        batch_size = int(ai_config.batch_size or 20)  # 每批处理的项目数
-        daily_limit = int(ai_config.daily_limit or 10000)
-        model_name = ai_config.model_name or "deepseek-chat"
-        
+        # 使用从配置获取的限流参数（已在_get_classification_ai_config中获取）
         logger.info(
             f"[AI分类任务] 批量处理配置: 批次大小={batch_size}, "
             f"调用延迟={call_delay}秒, 每日限额={daily_limit}, 模型={model_name}"
@@ -208,15 +264,15 @@ def classify_items_task(
                 # 批量调用AI接口
                 call_start_time = datetime.utcnow()
                 results = call_ai_classification_batch(
-                    api_endpoint=ai_config.api_endpoint,
+                    api_endpoint=api_endpoint,
                     api_key=api_key,
-                    prompt_template=ai_config.prompt_template,
+                    prompt_template=prompt_template,
                     items=items_for_ai,
                     dimensions=dimension_list,
                     max_retries=3,
                     timeout=60.0,
                     model_name=model_name,
-                    system_prompt=ai_config.system_prompt
+                    system_prompt=system_prompt
                 )
                 call_duration = (datetime.utcnow() - call_start_time).total_seconds()
                 
@@ -348,7 +404,7 @@ def classify_items_task(
                 # 继续处理下一批
                 continue
         
-        # 8. 完成后更新任务状态
+        # 7. 完成后更新任务状态
         task.status = TaskStatus.completed
         task.completed_at = datetime.utcnow()
         task.processed_items = processed_count

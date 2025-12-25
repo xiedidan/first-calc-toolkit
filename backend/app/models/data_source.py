@@ -3,6 +3,7 @@
 """
 from sqlalchemy import Column, Integer, String, Boolean, Text, TIMESTAMP, JSON
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 from app.database import Base
 
 
@@ -28,3 +29,6 @@ class DataSource(Base):
     pool_timeout = Column(Integer, default=30, nullable=False, comment="连接超时时间(秒)")
     created_at = Column(TIMESTAMP, server_default=func.now(), nullable=False, comment="创建时间")
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now(), nullable=False, comment="更新时间")
+
+    # 关系
+    metrics = relationship("Metric", back_populates="data_source")

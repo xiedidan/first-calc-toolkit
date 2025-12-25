@@ -5,9 +5,10 @@
         <div class="card-header">
           <span>维度目录管理</span>
           <div>
-            <el-button type="danger" plain @click="handleClearAll" v-if="!showingOrphans && !showingNoDimension">全部清除</el-button>
+            <el-button type="danger" plain @click="handleClearFiltered" v-if="!showingOrphans && !showingNoDimension && !showingDuplicates">清除筛选项目</el-button>
             <el-button type="danger" @click="handleClearAllOrphans" v-if="showingOrphans">清除无效记录</el-button>
             <el-button type="danger" @click="handleClearAllNoDimension" v-if="showingNoDimension">清除无维度项目</el-button>
+            <el-button type="danger" @click="handleClearAllDuplicates" v-if="showingDuplicates">清除重复记录</el-button>
             <el-button type="success" @click="handleSmartImport">智能导入</el-button>
             <el-button type="primary" @click="handleAdd">添加收费项目</el-button>
           </div>
@@ -62,8 +63,28 @@
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleSearch">查询</el-button>
-          <el-button type="warning" @click="handleShowOrphans">查看无效记录</el-button>
-          <el-button type="info" @click="handleShowNoDimension">查看无维度项目</el-button>
+        </el-form-item>
+        <el-form-item label="状态筛选">
+          <el-button-group>
+            <el-button 
+              :type="showingOrphans ? 'warning' : 'default'" 
+              @click="toggleOrphans"
+            >
+              无效记录
+            </el-button>
+            <el-button 
+              :type="showingNoDimension ? 'info' : 'default'" 
+              @click="toggleNoDimension"
+            >
+              无维度项目
+            </el-button>
+            <el-button 
+              :type="showingDuplicates ? 'danger' : 'default'" 
+              @click="toggleDuplicates"
+            >
+              重复记录
+            </el-button>
+          </el-button-group>
         </el-form-item>
       </el-form>
 
@@ -83,7 +104,14 @@
         style="margin-bottom: 16px"
       />
       <el-alert
-        v-else-if="!showingOrphans && !showingNoDimension && dimensionIds.length === 0 && tableData.length > 0"
+        v-if="showingDuplicates"
+        title="正在显示重复记录（同一项目在同一父级维度下的多个末级维度中出现）"
+        type="warning"
+        :closable="false"
+        style="margin-bottom: 16px"
+      />
+      <el-alert
+        v-else-if="!showingOrphans && !showingNoDimension && !showingDuplicates && dimensionIds.length === 0 && tableData.length > 0"
         title="正在显示所有维度的收费项目"
         type="info"
         :closable="false"
@@ -92,8 +120,8 @@
 
       <!-- 表格 -->
       <el-table :data="tableData" border stripe v-loading="loading">
-        <el-table-column prop="dimension_code" label="节点ID" min-width="120" v-if="showingOrphans || dimensionIds.length === 0" />
-        <el-table-column prop="dimension_name" label="维度名称" min-width="200" v-if="showingOrphans || dimensionIds.length === 0 || dimensionIds.length > 1" />
+        <el-table-column prop="dimension_code" label="节点ID" min-width="120" v-if="showingOrphans || showingDuplicates || dimensionIds.length === 0" />
+        <el-table-column prop="dimension_name" label="维度名称" min-width="200" v-if="showingOrphans || showingDuplicates || dimensionIds.length === 0 || dimensionIds.length > 1" />
         <el-table-column prop="item_code" label="收费项目编码" min-width="150" />
         <el-table-column prop="item_name" label="收费项目名称" min-width="200">
           <template #default="{ row }">
@@ -272,6 +300,7 @@ const modelVersions = ref<any[]>([]) // 模型版本列表
 const leafDimensions = ref<any[]>([]) // 末级维度列表
 const showingOrphans = ref(false) // 是否正在显示无效记录
 const showingNoDimension = ref(false) // 是否正在显示无维度项目
+const showingDuplicates = ref(false) // 是否正在显示重复记录
 
 const searchForm = reactive({
   keyword: ''
@@ -286,9 +315,24 @@ const pagination = reactive({
 const tableData = ref<DimensionItem[]>([])
 
 // 获取维度目录列表
-const fetchDimensionItems = async (orphansOnly = false, noDimensionOnly = false) => {
+const fetchDimensionItems = async (orphansOnly = false, noDimensionOnly = false, duplicatesOnly = false) => {
   loading.value = true
   try {
+    // 如果是查看重复记录，使用专门的API
+    if (duplicatesOnly) {
+      const params = {
+        page: pagination.page,
+        size: pagination.size
+      }
+      const res = await request.get('/dimension-items/duplicates', { params })
+      tableData.value = res.items
+      pagination.total = res.total
+      showingOrphans.value = false
+      showingNoDimension.value = false
+      showingDuplicates.value = true
+      return
+    }
+    
     const params: any = {
       page: pagination.page,
       size: pagination.size,
@@ -318,6 +362,7 @@ const fetchDimensionItems = async (orphansOnly = false, noDimensionOnly = false)
     pagination.total = res.total
     showingOrphans.value = orphansOnly
     showingNoDimension.value = noDimensionOnly
+    showingDuplicates.value = false
   } catch (error) {
     ElMessage.error('获取维度目录失败')
   } finally {
@@ -325,39 +370,72 @@ const fetchDimensionItems = async (orphansOnly = false, noDimensionOnly = false)
   }
 }
 
-// 搜索
+// 搜索（清除状态筛选）
 const handleSearch = () => {
   pagination.page = 1
   showingOrphans.value = false
   showingNoDimension.value = false
+  showingDuplicates.value = false
   fetchDimensionItems()
 }
 
-// 查看无效记录
-const handleShowOrphans = () => {
+// 切换无效记录筛选
+const toggleOrphans = () => {
   pagination.page = 1
-  searchForm.keyword = ''
-  showingNoDimension.value = false
-  fetchDimensionItems(true, false)
+  if (showingOrphans.value) {
+    // 取消筛选
+    showingOrphans.value = false
+    fetchDimensionItems()
+  } else {
+    // 启用筛选（互斥）
+    showingOrphans.value = true
+    showingNoDimension.value = false
+    showingDuplicates.value = false
+    fetchDimensionItems(true, false, false)
+  }
 }
 
-// 查看无维度项目
-const handleShowNoDimension = () => {
+// 切换无维度项目筛选
+const toggleNoDimension = () => {
   pagination.page = 1
-  searchForm.keyword = ''
-  showingOrphans.value = false
-  fetchDimensionItems(false, true)
+  if (showingNoDimension.value) {
+    // 取消筛选
+    showingNoDimension.value = false
+    fetchDimensionItems()
+  } else {
+    // 启用筛选（互斥）
+    showingOrphans.value = false
+    showingNoDimension.value = true
+    showingDuplicates.value = false
+    fetchDimensionItems(false, true, false)
+  }
+}
+
+// 切换重复记录筛选
+const toggleDuplicates = () => {
+  pagination.page = 1
+  if (showingDuplicates.value) {
+    // 取消筛选
+    showingDuplicates.value = false
+    fetchDimensionItems()
+  } else {
+    // 启用筛选（互斥）
+    showingOrphans.value = false
+    showingNoDimension.value = false
+    showingDuplicates.value = true
+    fetchDimensionItems(false, false, true)
+  }
 }
 
 // 处理每页数量变化
 const handleSizeChange = () => {
   pagination.page = 1 // 改变每页数量时重置到第一页
-  fetchDimensionItems(showingOrphans.value, showingNoDimension.value)
+  fetchDimensionItems(showingOrphans.value, showingNoDimension.value, showingDuplicates.value)
 }
 
 // 处理页码变化
 const handlePageChange = () => {
-  fetchDimensionItems(showingOrphans.value, showingNoDimension.value)
+  fetchDimensionItems(showingOrphans.value, showingNoDimension.value, showingDuplicates.value)
 }
 
 // 打开添加对话框
@@ -427,7 +505,8 @@ const handleSubmit = async () => {
     })
     ElMessage.success(res.message || '添加成功')
     dialogVisible.value = false
-    fetchDimensionItems()
+    // 保持当前筛选状态
+    fetchDimensionItems(showingOrphans.value, showingNoDimension.value, showingDuplicates.value)
   } catch (error) {
     ElMessage.error('添加失败')
   } finally {
@@ -449,16 +528,24 @@ const handleSubmitEdit = async () => {
     return
   }
 
+  // 将维度ID转换为code
+  const targetDimension = leafDimensions.value.find(dim => dim.id === targetDimensionId.value)
+  if (!targetDimension?.code) {
+    ElMessage.error('无法获取目标维度编码')
+    return
+  }
+
   submitting.value = true
   try {
     await request.put(`/dimension-items/${editingItem.value?.id}`, null, {
       params: {
-        new_dimension_code: targetDimensionId.value
+        new_dimension_code: targetDimension.code
       }
     })
     ElMessage.success('调整成功')
     editDialogVisible.value = false
-    fetchDimensionItems()
+    // 保持当前筛选状态
+    fetchDimensionItems(showingOrphans.value, showingNoDimension.value, showingDuplicates.value)
   } catch (error: any) {
     ElMessage.error(error.response?.data?.detail || '调整失败')
   } finally {
@@ -474,7 +561,8 @@ const handleDelete = async (row: DimensionItem) => {
     })
     await request.delete(`/dimension-items/${row.id}`)
     ElMessage.success('删除成功')
-    fetchDimensionItems()
+    // 保持当前筛选状态
+    fetchDimensionItems(showingOrphans.value, showingNoDimension.value, showingDuplicates.value)
   } catch (error: any) {
     if (error !== 'cancel') {
       ElMessage.error('删除失败')
@@ -536,54 +624,65 @@ const handleSmartImport = () => {
 // 导入成功回调
 const handleImportSuccess = () => {
   ElMessage.success('导入成功')
-  // 刷新当前列表
-  fetchDimensionItems()
+  // 刷新当前列表，保持筛选状态
+  fetchDimensionItems(showingOrphans.value, showingNoDimension.value, showingDuplicates.value)
 }
 
-// 全部清除
-const handleClearAll = async () => {
-  // 如果选择了多个维度，提示只能选择一个或不选
-  if (dimensionIds.value.length > 1) {
-    ElMessage.warning('清空操作只能选择一个维度或不选（清空全部）')
+// 清除筛选项目
+const handleClearFiltered = async () => {
+  if (pagination.total === 0) {
+    ElMessage.warning('当前没有可清除的项目')
     return
   }
 
-  // 根据是否选择维度显示不同的提示
-  const confirmMessage = dimensionIds.value.length === 0
-    ? `确定要清空当前医院的所有维度目录数据吗？此操作不可恢复！`
-    : `确定要清空所选维度的所有收费项目吗？此操作不可恢复！`
+  // 构建提示信息
+  let filterDesc = ''
+  if (dimensionIds.value.length > 0) {
+    filterDesc += `${dimensionIds.value.length}个维度`
+  }
+  if (searchForm.keyword) {
+    filterDesc += filterDesc ? '、' : ''
+    filterDesc += `关键词"${searchForm.keyword}"`
+  }
+  if (!filterDesc) {
+    filterDesc = '全部'
+  }
+
+  const confirmMessage = `确定要清除当前筛选条件（${filterDesc}）下的 ${pagination.total} 条记录吗？此操作不可恢复！`
 
   try {
     await ElMessageBox.confirm(
       confirmMessage,
       '警告',
       {
-        confirmButtonText: '确定清空',
+        confirmButtonText: '确定清除',
         cancelButtonText: '取消',
         type: 'warning',
         confirmButtonClass: 'el-button--danger'
       }
     )
 
-    // 如果选择了维度，清空该维度；否则清空全部
-    if (dimensionIds.value.length === 1) {
-      // 将维度ID转换为code
-      const selectedDimension = leafDimensions.value.find(dim => dim.id === dimensionIds.value[0])
-      if (!selectedDimension?.code) {
-        ElMessage.error('无法获取维度编码')
-        return
+    // 构建请求参数
+    const params: any = {}
+    if (dimensionIds.value.length > 0) {
+      const selectedCodes = dimensionIds.value
+        .map(id => leafDimensions.value.find(dim => dim.id === id)?.code)
+        .filter(code => code)
+      if (selectedCodes.length > 0) {
+        params.dimension_codes = selectedCodes.join(',')
       }
-      await request.delete(`/dimension-items/dimension/${selectedDimension.code}/clear-all`)
-    } else {
-      // 清空全部
-      await request.delete('/dimension-items/clear-all')
     }
-    
-    ElMessage.success('清空成功')
-    fetchDimensionItems()
+    if (searchForm.keyword) {
+      params.keyword = searchForm.keyword
+    }
+
+    const res = await request.delete('/dimension-items/filtered/clear-all', { params })
+    ElMessage.success(res.message || `已清除 ${res.deleted_count} 条记录`)
+    // 保持当前筛选状态
+    fetchDimensionItems(showingOrphans.value, showingNoDimension.value, showingDuplicates.value)
   } catch (error: any) {
     if (error !== 'cancel') {
-      ElMessage.error('清空失败')
+      ElMessage.error('清除失败')
     }
   }
 }
@@ -631,6 +730,31 @@ const handleClearAllNoDimension = async () => {
     ElMessage.success(res.message || `已清除 ${res.deleted_count} 条无维度项目`)
     // 重新查询无维度项目
     fetchDimensionItems(false, true)
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error('清除失败')
+    }
+  }
+}
+
+// 清除所有重复记录
+const handleClearAllDuplicates = async () => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要清除所有重复记录吗？共 ${pagination.total} 条记录。此操作不可恢复！`,
+      '警告',
+      {
+        confirmButtonText: '确定清除',
+        cancelButtonText: '取消',
+        type: 'warning',
+        confirmButtonClass: 'el-button--danger'
+      }
+    )
+
+    const res = await request.delete('/dimension-items/duplicates/clear-all')
+    ElMessage.success(res.message || `已清除 ${res.deleted_count} 条重复记录`)
+    // 重新查询重复记录
+    fetchDimensionItems(false, false, true)
   } catch (error: any) {
     if (error !== 'cancel') {
       ElMessage.error('清除失败')

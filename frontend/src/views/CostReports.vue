@@ -1,0 +1,917 @@
+<template>
+  <div class="cost-reports-container">
+    <el-card>
+      <template #header>
+        <div class="card-header">
+          <span>成本报表管理</span>
+          <div class="header-actions">
+            <el-button type="primary" @click="showImportDialog">Excel导入</el-button>
+            <el-button @click="showAddDialog">手动添加</el-button>
+          </div>
+        </div>
+      </template>
+
+      <!-- 搜索栏 -->
+      <div class="search-form">
+        <el-form :inline="true" :model="searchForm">
+          <el-form-item label="年月">
+            <el-date-picker
+              v-model="searchForm.period"
+              type="month"
+              placeholder="选择月份"
+              format="YYYY-MM"
+              value-format="YYYY-MM"
+              clearable
+              @change="handleSearch"
+            />
+          </el-form-item>
+          <el-form-item label="核算单元">
+            <el-select
+              v-model="searchForm.department_code"
+              placeholder="选择核算单元"
+              filterable
+              clearable
+              @change="handleSearch"
+            >
+              <el-option
+                v-for="dept in accountingUnits"
+                :key="dept.code"
+                :label="`${dept.name} (${dept.code})`"
+                :value="dept.code"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" @click="handleSearch">搜索</el-button>
+            <el-button @click="resetSearch">重置</el-button>
+            <el-button type="danger" @click="handleClearFiltered" :disabled="!hasFilter">
+              清空筛选结果
+            </el-button>
+          </el-form-item>
+        </el-form>
+      </div>
+
+      <!-- 数据表格 -->
+      <el-table :data="tableData" v-loading="loading" stripe border>
+        <el-table-column prop="period" label="年月" width="100" />
+        <el-table-column prop="department_code" label="核算单元代码" width="120" />
+        <el-table-column prop="department_name" label="核算单元名称" width="150" />
+        <el-table-column prop="personnel_cost" label="人员经费" width="130" align="right">
+          <template #default="{ row }">{{ formatNumber(row.personnel_cost) }}</template>
+        </el-table-column>
+        <el-table-column prop="material_cost" label="不收费卫生材料费" width="150" align="right">
+          <template #default="{ row }">{{ formatNumber(row.material_cost) }}</template>
+        </el-table-column>
+        <el-table-column prop="medicine_cost" label="不收费药品费" width="130" align="right">
+          <template #default="{ row }">{{ formatNumber(row.medicine_cost) }}</template>
+        </el-table-column>
+        <el-table-column prop="depreciation_cost" label="折旧风险费" width="120" align="right">
+          <template #default="{ row }">{{ formatNumber(row.depreciation_cost) }}</template>
+        </el-table-column>
+        <el-table-column prop="other_cost" label="其他费用" width="120" align="right">
+          <template #default="{ row }">{{ formatNumber(row.other_cost) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="150" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
+            <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <!-- 分页 -->
+      <div class="pagination-container">
+        <el-pagination
+          v-model:current-page="pagination.page"
+          v-model:page-size="pagination.size"
+          :total="pagination.total"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next, jumper"
+          @size-change="handleSizeChange"
+          @current-change="handlePageChange"
+        />
+      </div>
+    </el-card>
+
+    <!-- 添加/编辑对话框 -->
+    <el-dialog
+      v-model="formDialogVisible"
+      :title="isEdit ? '编辑成本记录' : '添加成本记录'"
+      width="600px"
+      append-to-body
+    >
+      <el-form :model="formData" :rules="formRules" ref="formRef" label-width="140px">
+        <el-form-item label="年月" prop="period">
+          <el-date-picker
+            v-model="formData.period"
+            type="month"
+            placeholder="选择月份"
+            format="YYYY-MM"
+            value-format="YYYY-MM"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="核算单元" prop="department_code">
+          <el-select
+            v-model="formData.department_code"
+            placeholder="选择核算单元"
+            filterable
+            style="width: 100%"
+            @change="handleDepartmentChange"
+          >
+            <el-option
+              v-for="dept in accountingUnits"
+              :key="dept.code"
+              :label="`${dept.name} (${dept.code})`"
+              :value="dept.code"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="人员经费" prop="personnel_cost">
+          <el-input-number v-model="formData.personnel_cost" :precision="4" :min="0" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="不收费卫生材料费" prop="material_cost">
+          <el-input-number v-model="formData.material_cost" :precision="4" :min="0" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="不收费药品费" prop="medicine_cost">
+          <el-input-number v-model="formData.medicine_cost" :precision="4" :min="0" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="折旧风险费" prop="depreciation_cost">
+          <el-input-number v-model="formData.depreciation_cost" :precision="4" :min="0" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="其他费用" prop="other_cost">
+          <el-input-number v-model="formData.other_cost" :precision="4" :min="0" style="width: 100%" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="formDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSubmit" :loading="submitting">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 导入对话框 -->
+    <el-dialog
+      v-model="importDialogVisible"
+      title="Excel智能导入"
+      width="900px"
+      append-to-body
+      :close-on-click-modal="false"
+    >
+      <el-steps :active="importStep" finish-status="success" simple style="margin-bottom: 20px">
+        <el-step title="上传文件" />
+        <el-step title="核算单元匹配" />
+        <el-step title="预览确认" />
+      </el-steps>
+
+      <!-- 步骤1：上传文件 -->
+      <div v-if="importStep === 0" class="import-step">
+        <el-form label-width="120px">
+          <el-form-item label="选择文件">
+            <el-upload
+              ref="uploadRef"
+              :auto-upload="false"
+              :limit="1"
+              accept=".xlsx,.xls"
+              :on-change="handleFileChange"
+              :on-remove="handleFileRemove"
+            >
+              <el-button type="primary">选择Excel文件</el-button>
+              <template #tip>
+                <div class="el-upload__tip">只能上传 xlsx/xls 文件</div>
+              </template>
+            </el-upload>
+          </el-form-item>
+          <el-form-item label="跳过行数">
+            <el-input-number v-model="importConfig.skipRows" :min="0" :max="100" @change="handleSkipRowsChange" />
+            <span style="margin-left: 10px; color: #909399">跳过前N行</span>
+          </el-form-item>
+          <el-form-item label="标题行位置">
+            <el-input-number v-model="importConfig.headerRow" :min="1" :max="100" />
+            <span style="margin-left: 10px; color: #909399">默认为跳过行数+1，可手动调整</span>
+          </el-form-item>
+          <el-form-item label="匹配方式">
+            <el-radio-group v-model="importConfig.matchBy">
+              <el-radio value="code">按核算单元代码精确匹配</el-radio>
+              <el-radio value="name">按核算单元名称模糊匹配</el-radio>
+            </el-radio-group>
+          </el-form-item>
+        </el-form>
+
+        <div v-if="parseResult" class="parse-result">
+          <h4>文件预览</h4>
+          <el-form label-width="120px">
+            <el-form-item label="工作表">
+              <el-select v-model="importConfig.sheetName" @change="handleSheetChange">
+                <el-option
+                  v-for="sheet in parseResult.sheet_names"
+                  :key="sheet"
+                  :label="sheet"
+                  :value="sheet"
+                />
+              </el-select>
+            </el-form-item>
+          </el-form>
+          
+          <h4>字段映射</h4>
+          <el-form label-width="140px">
+            <el-form-item label="年月列" required>
+              <el-select v-model="fieldMapping.period" placeholder="选择年月列">
+                <el-option v-for="h in parseResult.headers" :key="h" :label="h" :value="h" />
+              </el-select>
+            </el-form-item>
+            <el-form-item v-if="importConfig.matchBy === 'code'" label="核算单元代码列" required>
+              <el-select v-model="fieldMapping.department_code" placeholder="选择核算单元代码列">
+                <el-option v-for="h in parseResult.headers" :key="h" :label="h" :value="h" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="核算单元名称列" :required="importConfig.matchBy === 'name'">
+              <el-select v-model="fieldMapping.department_name" placeholder="选择核算单元名称列" :clearable="importConfig.matchBy === 'code'">
+                <el-option v-for="h in parseResult.headers" :key="h" :label="h" :value="h" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="人员经费列">
+              <el-select v-model="fieldMapping.personnel_cost" placeholder="选择人员经费列" clearable>
+                <el-option v-for="h in parseResult.headers" :key="h" :label="h" :value="h" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="不收费卫生材料费列">
+              <el-select v-model="fieldMapping.material_cost" placeholder="选择不收费卫生材料费列" clearable>
+                <el-option v-for="h in parseResult.headers" :key="h" :label="h" :value="h" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="不收费药品费列">
+              <el-select v-model="fieldMapping.medicine_cost" placeholder="选择不收费药品费列" clearable>
+                <el-option v-for="h in parseResult.headers" :key="h" :label="h" :value="h" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="折旧风险费列">
+              <el-select v-model="fieldMapping.depreciation_cost" placeholder="选择折旧风险费列" clearable>
+                <el-option v-for="h in parseResult.headers" :key="h" :label="h" :value="h" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="其他费用列">
+              <el-select v-model="fieldMapping.other_cost" placeholder="选择其他费用列" clearable>
+                <el-option v-for="h in parseResult.headers" :key="h" :label="h" :value="h" />
+              </el-select>
+            </el-form-item>
+          </el-form>
+
+          <h4>数据预览（前10行）</h4>
+          <el-table :data="parseResult.preview_data" border size="small" max-height="200">
+            <el-table-column
+              v-for="(header, index) in parseResult.headers"
+              :key="index"
+              :label="header"
+              :prop="String(index)"
+              min-width="120"
+            >
+              <template #default="{ row }">{{ row[index] }}</template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </div>
+
+      <!-- 步骤2：核算单元匹配（仅名称匹配时显示） -->
+      <div v-if="importStep === 1" class="import-step">
+        <div v-if="importConfig.matchBy === 'name'">
+          <p style="margin-bottom: 15px; color: #909399">
+            请为Excel中的核算单元名称选择对应的系统核算单元。不选择则跳过该科室的数据导入。
+          </p>
+          <el-table :data="uniqueValues" border max-height="400">
+            <el-table-column prop="value" label="Excel核算单元名称" width="200" />
+            <el-table-column prop="count" label="出现次数" width="100" align="center" />
+            <el-table-column label="匹配核算单元" min-width="300">
+              <template #default="{ row }">
+                <el-select
+                  v-model="departmentMapping[row.value]"
+                  placeholder="请选择"
+                  filterable
+                  style="width: 100%"
+                >
+                  <el-option
+                    key="__SKIP__"
+                    label="⊘ 不导入此科室"
+                    value="__SKIP__"
+                    style="color: #909399"
+                  />
+                  <el-option-group label="建议匹配">
+                    <el-option
+                      v-for="dept in row.suggested_departments"
+                      :key="dept.code"
+                      :label="`${dept.name} (${dept.code}) - 相似度: ${(dept.score * 100).toFixed(0)}%`"
+                      :value="dept.code"
+                    />
+                  </el-option-group>
+                  <el-option-group label="所有核算单元">
+                    <el-option
+                      v-for="dept in systemDepartments"
+                      :key="'all-' + dept.code"
+                      :label="`${dept.name} (${dept.code})`"
+                      :value="dept.code"
+                    />
+                  </el-option-group>
+                </el-select>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+        <div v-else>
+          <p>按核算单元代码精确匹配，无需手动映射。</p>
+        </div>
+      </div>
+
+      <!-- 步骤3：预览确认 -->
+      <div v-if="importStep === 2" class="import-step">
+        <div class="preview-statistics">
+          <el-tag type="success">新增: {{ previewStatistics.new_count }}</el-tag>
+          <el-tag type="warning">覆盖: {{ previewStatistics.update_count }}</el-tag>
+          <el-tag type="info">跳过: {{ previewStatistics.skip_count || 0 }}</el-tag>
+          <el-tag type="danger">错误: {{ previewStatistics.error_count }}</el-tag>
+          <el-tag>总计: {{ previewStatistics.total }}</el-tag>
+        </div>
+        <el-table :data="previewItems" border max-height="400">
+          <el-table-column prop="period" label="年月" width="90" />
+          <el-table-column prop="department_code" label="核算单元代码" width="120" />
+          <el-table-column prop="department_name" label="核算单元名称" width="120" />
+          <el-table-column prop="personnel_cost" label="人员经费" width="100" align="right">
+            <template #default="{ row }">{{ formatNumber(row.personnel_cost) }}</template>
+          </el-table-column>
+          <el-table-column prop="material_cost" label="材料费" width="100" align="right">
+            <template #default="{ row }">{{ formatNumber(row.material_cost) }}</template>
+          </el-table-column>
+          <el-table-column prop="status" label="状态" width="80" align="center">
+            <template #default="{ row }">
+              <el-tag :type="getStatusType(row.status)" size="small">
+                {{ getStatusText(row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="message" label="说明" min-width="150" show-overflow-tooltip />
+        </el-table>
+      </div>
+
+      <template #footer>
+        <el-button @click="importDialogVisible = false">取消</el-button>
+        <el-button v-if="importStep > 0" @click="importStep--">上一步</el-button>
+        <el-button 
+          v-if="importStep < 2" 
+          type="primary" 
+          @click="handleNextStep" 
+          :loading="importLoading"
+        >
+          下一步
+        </el-button>
+        <el-button 
+          v-if="importStep === 2" 
+          type="primary" 
+          @click="handleImportExecute" 
+          :loading="importLoading"
+        >
+          确认导入
+        </el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+
+<script setup lang="ts">
+import { ref, reactive, computed, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import type { FormInstance, UploadInstance } from 'element-plus'
+import {
+  getCostReports,
+  createCostReport,
+  updateCostReport,
+  deleteCostReport,
+  clearFilteredCostReports,
+  importParse,
+  importExtractValues,
+  importPreview,
+  importExecute,
+  type CostReport,
+  type ImportParseResponse,
+  type UniqueValueForMatch,
+  type DepartmentMatch,
+  type PreviewItem,
+  type PreviewStatistics
+} from '@/api/cost-reports'
+import request from '@/utils/request'
+
+// 数据
+const loading = ref(false)
+const submitting = ref(false)
+const tableData = ref<CostReport[]>([])
+const departments = ref<any[]>([])
+
+// 核算单元列表（从科室中提取去重）
+const accountingUnits = computed(() => {
+  const seen = new Set<string>()
+  const result: { code: string; name: string }[] = []
+  for (const dept of departments.value) {
+    const code = dept.accounting_unit_code || dept.his_code
+    const name = dept.accounting_unit_name || dept.his_name
+    if (code && !seen.has(code)) {
+      seen.add(code)
+      result.push({ code, name })
+    }
+  }
+  return result
+})
+
+// 搜索
+const searchForm = reactive({
+  period: '',
+  department_code: ''
+})
+
+const hasFilter = computed(() => {
+  return !!searchForm.period || !!searchForm.department_code
+})
+
+// 分页
+const pagination = reactive({
+  page: 1,
+  size: 20,
+  total: 0
+})
+
+// 表单
+const formDialogVisible = ref(false)
+const isEdit = ref(false)
+const editingId = ref<number | null>(null)
+const formRef = ref<FormInstance>()
+const formData = reactive({
+  period: '',
+  department_code: '',
+  department_name: '',
+  personnel_cost: 0,
+  material_cost: 0,
+  medicine_cost: 0,
+  depreciation_cost: 0,
+  other_cost: 0
+})
+
+const formRules = {
+  period: [{ required: true, message: '请选择年月', trigger: 'change' }],
+  department_code: [{ required: true, message: '请选择核算单元', trigger: 'change' }]
+}
+
+// 导入相关
+const importDialogVisible = ref(false)
+const importStep = ref(0)
+const importLoading = ref(false)
+const uploadRef = ref<UploadInstance>()
+const uploadFile = ref<File | null>(null)
+
+const importConfig = reactive({
+  skipRows: 0,
+  headerRow: 1,
+  matchBy: 'code' as 'code' | 'name',
+  sheetName: ''
+})
+
+const fieldMapping = reactive({
+  period: '',
+  department_code: '',
+  department_name: '',
+  personnel_cost: '',
+  material_cost: '',
+  medicine_cost: '',
+  depreciation_cost: '',
+  other_cost: ''
+})
+
+const parseResult = ref<ImportParseResponse | null>(null)
+const sessionId = ref('')
+const uniqueValues = ref<UniqueValueForMatch[]>([])
+const systemDepartments = ref<DepartmentMatch[]>([])
+const departmentMapping = reactive<Record<string, string>>({})
+const previewItems = ref<PreviewItem[]>([])
+const previewStatistics = ref<PreviewStatistics>({
+  total: 0,
+  new_count: 0,
+  update_count: 0,
+  error_count: 0
+})
+
+// 方法
+const loadData = async () => {
+  loading.value = true
+  try {
+    const res: any = await getCostReports({
+      period: searchForm.period || undefined,
+      department_code: searchForm.department_code || undefined,
+      page: pagination.page,
+      size: pagination.size
+    })
+    tableData.value = res.items || []
+    pagination.total = res.total || 0
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || '加载数据失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+const loadDepartments = async () => {
+  try {
+    const res: any = await request({
+      url: '/departments',
+      method: 'get',
+      params: { page: 1, size: 1000 }
+    })
+    departments.value = res.items || []
+  } catch (error) {
+    console.error('加载科室失败:', error)
+  }
+}
+
+const handleSearch = () => {
+  pagination.page = 1
+  loadData()
+}
+
+const resetSearch = () => {
+  searchForm.period = ''
+  searchForm.department_code = ''
+  pagination.page = 1
+  loadData()
+}
+
+const handleSizeChange = () => {
+  pagination.page = 1
+  loadData()
+}
+
+const handlePageChange = () => {
+  loadData()
+}
+
+const formatNumber = (value: any) => {
+  if (value === null || value === undefined) return '-'
+  return Number(value).toLocaleString('zh-CN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4
+  })
+}
+
+const showAddDialog = () => {
+  isEdit.value = false
+  editingId.value = null
+  Object.assign(formData, {
+    period: '',
+    department_code: '',
+    department_name: '',
+    personnel_cost: 0,
+    material_cost: 0,
+    medicine_cost: 0,
+    depreciation_cost: 0,
+    other_cost: 0
+  })
+  formDialogVisible.value = true
+}
+
+const handleEdit = (row: CostReport) => {
+  isEdit.value = true
+  editingId.value = row.id
+  Object.assign(formData, {
+    period: row.period,
+    department_code: row.department_code,
+    department_name: row.department_name,
+    personnel_cost: Number(row.personnel_cost) || 0,
+    material_cost: Number(row.material_cost) || 0,
+    medicine_cost: Number(row.medicine_cost) || 0,
+    depreciation_cost: Number(row.depreciation_cost) || 0,
+    other_cost: Number(row.other_cost) || 0
+  })
+  formDialogVisible.value = true
+}
+
+const handleDepartmentChange = (code: string) => {
+  const unit = accountingUnits.value.find((u) => u.code === code)
+  if (unit) {
+    formData.department_name = unit.name
+  }
+}
+
+const handleSubmit = async () => {
+  if (!formRef.value) return
+  
+  await formRef.value.validate(async (valid) => {
+    if (!valid) return
+    
+    submitting.value = true
+    try {
+      if (isEdit.value && editingId.value) {
+        await updateCostReport(editingId.value, formData)
+        ElMessage.success('更新成功')
+      } else {
+        await createCostReport(formData)
+        ElMessage.success('添加成功')
+      }
+      formDialogVisible.value = false
+      loadData()
+    } catch (error: any) {
+      ElMessage.error(error.response?.data?.detail || '操作失败')
+    } finally {
+      submitting.value = false
+    }
+  })
+}
+
+const handleDelete = async (row: CostReport) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除 ${row.period} ${row.department_name} 的成本报表吗？`,
+      '确认删除',
+      { type: 'warning' }
+    )
+    await deleteCostReport(row.id)
+    ElMessage.success('删除成功')
+    loadData()
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error(error.response?.data?.detail || '删除失败')
+    }
+  }
+}
+
+const handleClearFiltered = async () => {
+  const filterDesc = []
+  if (searchForm.period) filterDesc.push(`年月: ${searchForm.period}`)
+  if (searchForm.department_code) {
+    const unit = accountingUnits.value.find((u) => u.code === searchForm.department_code)
+    filterDesc.push(`核算单元: ${unit?.name || searchForm.department_code}`)
+  }
+  
+  try {
+    await ElMessageBox.confirm(
+      `确定要清空以下筛选条件的所有记录吗？\n${filterDesc.join('\n')}\n\n共 ${pagination.total} 条记录将被删除，此操作不可恢复！`,
+      '确认清空',
+      { type: 'warning' }
+    )
+    
+    await clearFilteredCostReports({
+      period: searchForm.period || undefined,
+      department_code: searchForm.department_code || undefined
+    })
+    ElMessage.success('清空成功')
+    loadData()
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error(error.response?.data?.detail || '清空失败')
+    }
+  }
+}
+
+// 导入相关方法
+const showImportDialog = () => {
+  importStep.value = 0
+  parseResult.value = null
+  sessionId.value = ''
+  uploadFile.value = null
+  Object.assign(importConfig, { skipRows: 0, headerRow: 1, matchBy: 'code', sheetName: '' })
+  Object.assign(fieldMapping, {
+    period: '',
+    department_code: '',
+    department_name: '',
+    personnel_cost: '',
+    material_cost: '',
+    medicine_cost: '',
+    depreciation_cost: '',
+    other_cost: ''
+  })
+  uniqueValues.value = []
+  systemDepartments.value = []
+  Object.keys(departmentMapping).forEach(key => delete departmentMapping[key])
+  previewItems.value = []
+  previewStatistics.value = { total: 0, new_count: 0, update_count: 0, error_count: 0 }
+  importDialogVisible.value = true
+}
+
+const handleFileChange = (file: any) => {
+  uploadFile.value = file.raw
+  parseExcelFile()
+}
+
+const handleFileRemove = () => {
+  uploadFile.value = null
+  parseResult.value = null
+}
+
+const parseExcelFile = async () => {
+  if (!uploadFile.value) return
+  
+  importLoading.value = true
+  try {
+    const res: any = await importParse(
+      uploadFile.value, 
+      importConfig.sheetName, 
+      importConfig.skipRows,
+      importConfig.headerRow
+    )
+    parseResult.value = res
+    sessionId.value = res.session_id
+    importConfig.sheetName = res.current_sheet
+    
+    // 更新标题行位置（如果后端返回了）
+    if (res.header_row) {
+      importConfig.headerRow = res.header_row
+    }
+    
+    if (res.suggested_mapping) {
+      Object.assign(fieldMapping, res.suggested_mapping)
+    }
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || '解析文件失败')
+  } finally {
+    importLoading.value = false
+  }
+}
+
+const handleSheetChange = () => {
+  parseExcelFile()
+}
+
+const handleSkipRowsChange = (val: number) => {
+  // 当跳过行数变化时，自动更新标题行位置为跳过行数+1
+  importConfig.headerRow = val + 1
+}
+
+const handleNextStep = async () => {
+  if (importStep.value === 0) {
+    if (!fieldMapping.period) {
+      ElMessage.warning('请选择年月列')
+      return
+    }
+    if (importConfig.matchBy === 'code' && !fieldMapping.department_code) {
+      ElMessage.warning('请选择科室代码列')
+      return
+    }
+    if (importConfig.matchBy === 'name' && !fieldMapping.department_name) {
+      ElMessage.warning('请选择科室名称列')
+      return
+    }
+    
+    importLoading.value = true
+    try {
+      const res: any = await importExtractValues({
+        session_id: sessionId.value,
+        field_mapping: fieldMapping,
+        match_by: importConfig.matchBy
+      })
+      
+      uniqueValues.value = res.unique_values || []
+      systemDepartments.value = res.system_departments || []
+      
+      for (const uv of uniqueValues.value) {
+        if (uv.suggested_departments && uv.suggested_departments.length > 0) {
+          const best = uv.suggested_departments[0]
+          if (best.score >= 0.8) {
+            // 高相似度自动匹配
+            departmentMapping[uv.value] = best.code
+          } else {
+            // 低相似度默认跳过，让用户手动选择
+            departmentMapping[uv.value] = '__SKIP__'
+          }
+        } else {
+          // 没有建议匹配，默认跳过
+          departmentMapping[uv.value] = '__SKIP__'
+        }
+      }
+      
+      if (importConfig.matchBy === 'code') {
+        await generatePreview()
+        importStep.value = 2
+      } else {
+        importStep.value = 1
+      }
+    } catch (error: any) {
+      ElMessage.error(error.response?.data?.detail || '提取数据失败')
+    } finally {
+      importLoading.value = false
+    }
+  } else if (importStep.value === 1) {
+    await generatePreview()
+    importStep.value = 2
+  }
+}
+
+const generatePreview = async () => {
+  importLoading.value = true
+  try {
+    // 将 __SKIP__ 转换为 null，表示跳过该科室
+    const valueMapping = Object.entries(departmentMapping).map(([value, code]) => ({
+      value,
+      department_code: code === '__SKIP__' ? null : (code || null)
+    }))
+    
+    const res: any = await importPreview({
+      session_id: sessionId.value,
+      value_mapping: valueMapping
+    })
+    
+    previewItems.value = res.preview_items || []
+    previewStatistics.value = res.statistics || { total: 0, new_count: 0, update_count: 0, error_count: 0 }
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || '生成预览失败')
+    throw error
+  } finally {
+    importLoading.value = false
+  }
+}
+
+const handleImportExecute = async () => {
+  importLoading.value = true
+  try {
+    const res: any = await importExecute({
+      session_id: sessionId.value,
+      confirmed_items: previewItems.value
+    })
+    
+    if (res.success) {
+      const report = res.report
+      const skipInfo = report.skip_count > 0 ? `，跳过 ${report.skip_count} 条` : ''
+      ElMessage.success(`导入完成：新增 ${report.success_count} 条，更新 ${report.update_count} 条${skipInfo}，失败 ${report.error_count} 条`)
+      importDialogVisible.value = false
+      loadData()
+    }
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || '导入失败')
+  } finally {
+    importLoading.value = false
+  }
+}
+
+const getStatusType = (status: string) => {
+  switch (status) {
+    case 'new': return 'success'
+    case 'update': return 'warning'
+    case 'skip': return 'info'
+    case 'error': return 'danger'
+    default: return 'info'
+  }
+}
+
+const getStatusText = (status: string) => {
+  switch (status) {
+    case 'new': return '新增'
+    case 'update': return '覆盖'
+    case 'skip': return '跳过'
+    case 'error': return '错误'
+    default: return status
+  }
+}
+
+onMounted(() => {
+  loadData()
+  loadDepartments()
+})
+</script>
+
+<style scoped>
+.cost-reports-container {
+  padding: 0;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.search-form {
+  margin-bottom: 20px;
+}
+
+.pagination-container {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.import-step {
+  min-height: 300px;
+}
+
+.parse-result {
+  margin-top: 20px;
+}
+
+.parse-result h4 {
+  margin: 15px 0 10px;
+  color: #303133;
+}
+
+.preview-statistics {
+  margin-bottom: 15px;
+  display: flex;
+  gap: 10px;
+}
+</style>

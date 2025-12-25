@@ -55,11 +55,17 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="业务导向" min-width="600" show-overflow-tooltip>
+        <el-table-column label="业务导向" min-width="200" show-overflow-tooltip>
           <template #default="{ row }">
             <span v-if="row.is_leaf && row.orientation_rule_names && row.orientation_rule_names.length > 0">
               {{ row.orientation_rule_names.join(', ') }}
             </span>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="规则说明" min-width="400" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span v-if="row.rule">{{ row.rule }}</span>
             <span v-else>-</span>
           </template>
         </el-table-column>

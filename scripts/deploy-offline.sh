@@ -1,89 +1,89 @@
 #!/bin/bash
 # ============================================
-# 一键部署脚本
+# One-click Deployment Script
 # ============================================
 
 set -e
 
 echo "=========================================="
-echo "  医院科室业务价值评估工具"
-echo "  离线部署"
+echo "  Hospital Value Assessment Tool"
+echo "  Offline Deployment"
 echo "=========================================="
 echo ""
 
-# 步骤1: 检查前置条件
-echo "步骤 1/6: 检查前置条件"
+# Step 1: Check prerequisites
+echo "Step 1/6: Check prerequisites"
 echo "=========================================="
 bash scripts/check-prerequisites.sh
 echo ""
 
-# 步骤2: 导入Docker镜像
-echo "步骤 2/6: 导入Docker镜像"
+# Step 2: Import Docker images
+echo "Step 2/6: Import Docker images"
 echo "=========================================="
 bash scripts/load-images.sh
 echo ""
 
-# 步骤3: 配置环境
-echo "步骤 3/6: 配置环境"
+# Step 3: Configure environment
+echo "Step 3/6: Configure environment"
 echo "=========================================="
 if [ ! -f ".env" ]; then
-    echo ">>> 创建配置文件..."
+    echo ">>> Creating config file..."
     cp config/.env.offline.template .env
-    echo "✓ 配置文件已创建: .env"
+    echo "OK: Config file created: .env"
     echo ""
-    echo "⚠ 请编辑 .env 文件，配置以下信息:"
-    echo "  1. 数据库连接信息 (DATABASE_URL)"
-    echo "  2. JWT密钥 (SECRET_KEY)"
-    echo "  3. 加密密钥 (ENCRYPTION_KEY)"
+    echo "WARNING: Please edit .env file and configure:"
+    echo "  1. Database connection (DATABASE_URL)"
+    echo "  2. JWT secret key (SECRET_KEY)"
+    echo "  3. Encryption key (ENCRYPTION_KEY)"
     echo ""
-    echo "生成密钥的方法:"
+    echo "Key generation methods:"
     echo "  SECRET_KEY: python3 -c \"import secrets; print(secrets.token_urlsafe(32))\""
     echo "  ENCRYPTION_KEY: python3 -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
     echo ""
-    echo "配置完成后，重新运行此脚本"
+    echo "After configuration, run this script again"
     exit 0
 else
-    echo "✓ 配置文件已存在"
+    echo "OK: Config file exists"
 fi
 echo ""
 
-# 步骤4: 启动服务
-echo "步骤 4/6: 启动服务"
+# Step 4: Start services
+echo "Step 4/6: Start services"
 echo "=========================================="
-echo ">>> 启动Docker容器..."
+echo ">>> Starting Docker containers..."
 docker-compose -f config/docker-compose.offline.yml up -d
-echo "✓ 服务启动完成"
+echo "OK: Services started"
 echo ""
 
-# 步骤5: 等待服务就绪
-echo "步骤 5/6: 等待服务就绪"
+# Step 5: Wait for services ready
+echo "Step 5/6: Wait for services ready"
 echo "=========================================="
-echo ">>> 等待容器启动..."
+echo ">>> Waiting for containers to start..."
 sleep 10
 
-echo ">>> 检查容器状态..."
+echo ">>> Checking container status..."
 docker-compose -f config/docker-compose.offline.yml ps
 echo ""
 
-# 步骤6: 初始化数据库
-echo "步骤 6/6: 初始化数据库"
+# Step 6: Initialize database
+echo "Step 6/6: Initialize database"
 echo "=========================================="
 bash scripts/init-database.sh
 echo ""
 
-# 验证部署
+# Verify deployment
 echo "=========================================="
-echo "  部署完成！"
+echo "  Deployment Complete!"
 echo "=========================================="
 echo ""
-echo "服务访问地址:"
-echo "  前端: http://localhost:${FRONTEND_PORT:-80}"
-echo "  后端API: http://localhost:${BACKEND_PORT:-8000}/docs"
+echo "Service URLs:"
+echo "  Frontend: http://localhost:${FRONTEND_PORT:-80}"
+echo "  Backend API: http://localhost:${BACKEND_PORT:-8000}/docs"
 echo ""
-echo "常用命令:"
-echo "  查看服务状态: docker-compose -f config/docker-compose.offline.yml ps"
-echo "  查看日志: docker-compose -f config/docker-compose.offline.yml logs -f"
-echo "  停止服务: docker-compose -f config/docker-compose.offline.yml stop"
-echo "  启动服务: docker-compose -f config/docker-compose.offline.yml start"
-echo "  重启服务: docker-compose -f config/docker-compose.offline.yml restart"
+echo "Common commands:"
+echo "  Check status: docker-compose -f config/docker-compose.offline.yml ps"
+echo "  View logs: docker-compose -f config/docker-compose.offline.yml logs -f"
+echo "  Stop services: docker-compose -f config/docker-compose.offline.yml stop"
+echo "  Start services: docker-compose -f config/docker-compose.offline.yml start"
+echo "  Restart services: docker-compose -f config/docker-compose.offline.yml restart"
 echo ""

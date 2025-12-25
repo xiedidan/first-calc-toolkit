@@ -15,6 +15,8 @@ export interface AnalysisReport {
   department_code: string
   department_name: string
   period: string
+  task_id: string | null
+  workflow_name: string | null
   current_issues: string | null
   future_plans: string | null
   created_at: string
@@ -28,6 +30,7 @@ export interface AnalysisReport {
 export interface AnalysisReportCreate {
   department_id: number
   period: string
+  task_id?: string | null
   current_issues?: string | null
   future_plans?: string | null
 }
@@ -36,6 +39,7 @@ export interface AnalysisReportCreate {
  * 更新分析报告接口
  */
 export interface AnalysisReportUpdate {
+  task_id?: string | null
   current_issues?: string | null
   future_plans?: string | null
 }
@@ -133,6 +137,7 @@ export function getAnalysisReports(params?: {
   period?: string
   department_code?: string
   department_name?: string
+  task_id?: string
   sort_by?: string
   sort_order?: 'asc' | 'desc'
 }) {
@@ -231,15 +236,43 @@ export function getDimensionDrillDown(reportId: number, nodeId: number) {
 }
 
 /**
+ * 计算任务简要信息（用于选择器）
+ */
+export interface CalculationTaskBrief {
+  task_id: string
+  period: string
+  workflow_id: number
+  workflow_name: string
+  status: string
+  created_at: string
+  completed_at: string | null
+}
+
+/**
+ * 获取可用的计算任务列表（用于报告创建时选择）
+ */
+export function getAvailableTasks(params?: {
+  period?: string
+  status?: string
+}) {
+  return request<CalculationTaskBrief[]>({
+    url: '/analysis-reports/available-tasks',
+    method: 'get',
+    params
+  })
+}
+
+/**
  * 预览科室主业价值分布（用于新建报告时）
  */
-export function previewValueDistribution(departmentId: number, period: string) {
+export function previewValueDistribution(departmentId: number, period: string, taskId?: string) {
   return request<ValueDistributionResponse>({
     url: '/analysis-reports/preview/value-distribution',
     method: 'get',
     params: {
       department_id: departmentId,
-      period: period
+      period: period,
+      task_id: taskId
     }
   })
 }
@@ -247,13 +280,14 @@ export function previewValueDistribution(departmentId: number, period: string) {
 /**
  * 预览科室业务内涵展示（用于新建报告时）
  */
-export function previewBusinessContent(departmentId: number, period: string) {
+export function previewBusinessContent(departmentId: number, period: string, taskId?: string) {
   return request<BusinessContentResponse>({
     url: '/analysis-reports/preview/business-content',
     method: 'get',
     params: {
       department_id: departmentId,
-      period: period
+      period: period,
+      task_id: taskId
     }
   })
 }
@@ -261,14 +295,15 @@ export function previewBusinessContent(departmentId: number, period: string) {
 /**
  * 预览维度下钻明细（用于新建报告时）
  */
-export function previewDimensionDrillDown(departmentId: number, period: string, nodeId: number) {
+export function previewDimensionDrillDown(departmentId: number, period: string, nodeId: number, taskId?: string) {
   return request<DimensionDrillDownResponse>({
     url: '/analysis-reports/preview/dimension-drilldown',
     method: 'get',
     params: {
       department_id: departmentId,
       period: period,
-      node_id: nodeId
+      node_id: nodeId,
+      task_id: taskId
     }
   })
 }

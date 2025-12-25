@@ -131,6 +131,120 @@ def apply_department_filter(query, user: User):
     return query
 
 
+def get_task_by_id_or_latest(
+    db: Session,
+    hospital_id: int,
+    period: str,
+    task_id: Optional[str] = None
+):
+    """
+    根据 task_id 获取任务，或获取最新完成的任务
+    
+    Args:
+        db: 数据库会话
+        hospital_id: 医疗机构ID
+        period: 年月
+        task_id: 可选的任务ID
+        
+    Returns:
+        CalculationTask 或 None
+    """
+    from app.models.calculation_task import CalculationTask
+    from app.models.model_version import ModelVersion
+    
+    if task_id:
+        # 通过 task_id 直接查询
+        task = db.query(CalculationTask).filter(
+            CalculationTask.task_id == task_id,
+            CalculationTask.status == "completed"
+        ).first()
+        return task
+    
+    # 查找激活版本的最新完成任务
+    active_version = db.query(ModelVersion).filter(
+        ModelVersion.hospital_id == hospital_id,
+        ModelVersion.is_active == True
+    ).first()
+    
+    if not active_version:
+        return None
+    
+    task = db.query(CalculationTask).filter(
+        CalculationTask.model_version_id == active_version.id,
+        CalculationTask.period == period,
+        CalculationTask.status == "completed"
+    ).order_by(desc(CalculationTask.completed_at)).first()
+    
+    return task
+
+
+@router.get("/available-tasks")
+def get_available_tasks(
+    period: Optional[str] = Query(None, description="年月筛选 (YYYY-MM)"),
+    status: Optional[str] = Query("completed", description="任务状态筛选"),
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """
+    获取可用的计算任务列表（用于报告创建时选择）
+    
+    - 返回当前医疗机构的已完成计算任务
+    - 按完成时间倒序排列
+    """
+    from app.models.calculation_task import CalculationTask
+    from app.models.calculation_workflow import CalculationWorkflow
+    from app.models.model_version import ModelVersion
+    
+    hospital_id = get_current_hospital_id_or_raise()
+    
+    # 查询该医疗机构的所有版本
+    version_ids = db.query(ModelVersion.id).filter(
+        ModelVersion.hospital_id == hospital_id
+    ).all()
+    version_ids = [v[0] for v in version_ids]
+    
+    if not version_ids:
+        return []
+    
+    # 查询任务
+    query = db.query(CalculationTask).filter(
+        CalculationTask.model_version_id.in_(version_ids)
+    )
+    
+    if status:
+        query = query.filter(CalculationTask.status == status)
+    
+    if period:
+        query = query.filter(CalculationTask.period == period)
+    
+    # 按完成时间倒序
+    query = query.order_by(desc(CalculationTask.completed_at))
+    
+    tasks = query.limit(100).all()
+    
+    # 预加载工作流名称
+    result = []
+    for task in tasks:
+        workflow_name = None
+        if task.workflow_id:
+            workflow = db.query(CalculationWorkflow).filter(
+                CalculationWorkflow.id == task.workflow_id
+            ).first()
+            if workflow:
+                workflow_name = workflow.name
+        
+        result.append({
+            "task_id": task.task_id,
+            "period": task.period,
+            "workflow_id": task.workflow_id,
+            "workflow_name": workflow_name or "默认流程",
+            "status": task.status,
+            "created_at": task.created_at.isoformat() if task.created_at else None,
+            "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+        })
+    
+    return result
+
 
 @router.get("", response_model=AnalysisReportList)
 def get_analysis_reports(
@@ -141,6 +255,7 @@ def get_analysis_reports(
     period: Optional[str] = Query(None, description="年月筛选 (YYYY-MM)"),
     department_code: Optional[str] = Query(None, description="科室代码搜索"),
     department_name: Optional[str] = Query(None, description="科室名称搜索"),
+    task_id: Optional[str] = Query(None, description="计算任务ID筛选"),
     sort_by: Optional[str] = Query("period", description="排序字段: period, department_code, department_name"),
     sort_order: Optional[str] = Query("desc", description="排序方向: asc, desc"),
 ):
@@ -149,7 +264,7 @@ def get_analysis_reports(
     
     - 科室用户只能查看自己科室的报告
     - 管理员可以查看所有报告
-    - 支持按年月、科室代码、科室名称筛选和排序
+    - 支持按年月、科室代码、科室名称、计算任务筛选和排序
     """
     query = db.query(AnalysisReport).join(
         Department, AnalysisReport.department_id == Department.id
@@ -164,6 +279,10 @@ def get_analysis_reports(
     # 年月筛选
     if period:
         query = query.filter(AnalysisReport.period == period)
+    
+    # 计算任务筛选
+    if task_id:
+        query = query.filter(AnalysisReport.task_id == task_id)
     
     # 科室代码搜索
     if department_code:
@@ -194,10 +313,27 @@ def get_analysis_reports(
     # 分页
     items = query.offset((page - 1) * size).limit(size).all()
     
-    # 转换为响应格式，添加科室信息
+    # 转换为响应格式，添加科室信息和工作流名称
+    from app.models.calculation_task import CalculationTask
+    from app.models.calculation_workflow import CalculationWorkflow
+    
     result_items = []
     for report in items:
         dept = report.department
+        
+        # 获取工作流名称
+        workflow_name = None
+        if report.task_id:
+            task = db.query(CalculationTask).filter(
+                CalculationTask.task_id == report.task_id
+            ).first()
+            if task and task.workflow_id:
+                workflow = db.query(CalculationWorkflow).filter(
+                    CalculationWorkflow.id == task.workflow_id
+                ).first()
+                if workflow:
+                    workflow_name = workflow.name
+        
         report_dict = {
             "id": report.id,
             "hospital_id": report.hospital_id,
@@ -205,6 +341,8 @@ def get_analysis_reports(
             "department_code": dept.accounting_unit_code if dept else "",
             "department_name": (dept.accounting_unit_name or dept.his_name) if dept else "",
             "period": report.period,
+            "task_id": report.task_id,
+            "workflow_name": workflow_name,
             "current_issues": report.current_issues,
             "future_plans": report.future_plans,
             "created_at": report.created_at,
@@ -219,7 +357,7 @@ def get_analysis_reports(
 @router.get("/dimension-drilldown", response_model=DimensionDrillDownResponse)
 def get_dimension_drilldown_by_task(
     task_id: str = Query(..., description="任务ID"),
-    department_id: int = Query(..., description="科室ID"),
+    department_id: int = Query(..., description="科室ID（0表示全院汇总）"),
     node_id: int = Query(..., description="节点ID"),
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
@@ -230,6 +368,7 @@ def get_dimension_drilldown_by_task(
     - 用于计算结果页面的下钻功能
     - 查询该维度对应的收费项目明细
     - 仅支持医生序列中按维度目录计算的末级维度（除病例价值维度外）
+    - department_id=0 表示全院汇总，将查询所有科室的数据
     """
     from decimal import Decimal
     from sqlalchemy import text
@@ -249,13 +388,24 @@ def get_dimension_drilldown_by_task(
     hospital_id = get_current_hospital_id_or_raise()
     period = task.period
     
+    # 判断是否为全院汇总
+    is_hospital_summary = (department_id == 0)
+    
     # 查询该维度节点信息
-    dimension_result = db.query(CalculationResult).filter(
-        CalculationResult.task_id == task_id,
-        CalculationResult.department_id == department_id,
-        CalculationResult.node_id == node_id,
-        CalculationResult.node_type == "dimension"
-    ).first()
+    # 对于全院汇总(department_id=0)，从任意一个科室获取维度信息（维度结构相同）
+    if is_hospital_summary:
+        dimension_result = db.query(CalculationResult).filter(
+            CalculationResult.task_id == task_id,
+            CalculationResult.node_id == node_id,
+            CalculationResult.node_type == "dimension"
+        ).first()
+    else:
+        dimension_result = db.query(CalculationResult).filter(
+            CalculationResult.task_id == task_id,
+            CalculationResult.department_id == department_id,
+            CalculationResult.node_id == node_id,
+            CalculationResult.node_type == "dimension"
+        ).first()
     
     if not dimension_result:
         raise HTTPException(status_code=404, detail="未找到该维度的计算结果")
@@ -265,6 +415,10 @@ def get_dimension_drilldown_by_task(
     
     if not dimension_code:
         raise HTTPException(status_code=400, detail="该维度缺少编码信息，无法下钻")
+    
+    # 检查是否为指标维度（成本等），指标维度不支持下钻
+    if '-cost' in dimension_code:
+        raise HTTPException(status_code=400, detail="指标维度（成本等）不支持下钻")
     
     # 检查是否为支持下钻的维度（医生、医技、护理序列中用charge_details计算的维度）
     is_doctor_dim = dimension_code.startswith('dim-doc-') and dimension_code != 'dim-doc-case'
@@ -285,12 +439,18 @@ def get_dimension_drilldown_by_task(
             detail="仅支持医生、医技、护理序列中按维度目录计算的末级维度下钻（不包括病例价值维度和工作量统计维度）"
         )
     
-    # 检查是否为叶子节点
-    has_children = db.query(CalculationResult).filter(
-        CalculationResult.task_id == task_id,
-        CalculationResult.department_id == department_id,
-        CalculationResult.parent_id == node_id
-    ).first()
+    # 检查是否为叶子节点（对于全院汇总，从任意科室检查）
+    if is_hospital_summary:
+        has_children = db.query(CalculationResult).filter(
+            CalculationResult.task_id == task_id,
+            CalculationResult.parent_id == node_id
+        ).first()
+    else:
+        has_children = db.query(CalculationResult).filter(
+            CalculationResult.task_id == task_id,
+            CalculationResult.department_id == department_id,
+            CalculationResult.parent_id == node_id
+        ).first()
     
     if has_children:
         raise HTTPException(status_code=400, detail="该维度不是末级维度，无法下钻")
@@ -321,24 +481,66 @@ def get_dimension_drilldown_by_task(
     
     item_info_map = {ci.item_code: ci for ci in charge_items}
     
-    # 获取科室信息
-    department = db.query(Department).filter(
-        Department.id == department_id
-    ).first()
-    
-    if not department:
-        raise HTTPException(status_code=404, detail="科室不存在")
-    
-    dept_code = department.his_code
-    dept_name = department.accounting_unit_name or department.his_name
+    # 获取科室信息（department_id=0 表示全院汇总）
+    if is_hospital_summary:
+        dept_code = None
+        dept_name = "全院汇总"
+    else:
+        department = db.query(Department).filter(
+            Department.id == department_id
+        ).first()
+        
+        if not department:
+            raise HTTPException(status_code=404, detail="科室不存在")
+        
+        dept_code = department.his_code
+        dept_name = department.accounting_unit_name or department.his_name
     
     # 根据维度编码判断业务类型
     business_type = get_business_type_from_dimension_code(dimension_code)
     
     # 从 charge_details 表查询该科室该月份该维度的收费明细
     try:
-        # 根据是否需要区分业务类型构建不同的SQL
-        if business_type:
+        # 根据是否为全院汇总和是否需要区分业务类型构建不同的SQL
+        if is_hospital_summary:
+            # 全院汇总：不按科室筛选
+            if business_type:
+                sql = text("""
+                    SELECT 
+                        item_code,
+                        item_name,
+                        SUM(amount) as total_amount,
+                        SUM(quantity) as total_quantity
+                    FROM charge_details
+                    WHERE TO_CHAR(charge_time, 'YYYY-MM') = :period
+                    AND item_code = ANY(:item_codes)
+                    AND business_type = :business_type
+                    GROUP BY item_code, item_name
+                    ORDER BY total_amount DESC
+                """)
+                result = db.execute(sql, {
+                    "period": period,
+                    "item_codes": item_codes,
+                    "business_type": business_type
+                })
+            else:
+                sql = text("""
+                    SELECT 
+                        item_code,
+                        item_name,
+                        SUM(amount) as total_amount,
+                        SUM(quantity) as total_quantity
+                    FROM charge_details
+                    WHERE TO_CHAR(charge_time, 'YYYY-MM') = :period
+                    AND item_code = ANY(:item_codes)
+                    GROUP BY item_code, item_name
+                    ORDER BY total_amount DESC
+                """)
+                result = db.execute(sql, {
+                    "period": period,
+                    "item_codes": item_codes
+                })
+        elif business_type:
             sql = text("""
                 SELECT 
                     item_code,
@@ -397,7 +599,7 @@ def get_dimension_drilldown_by_task(
             
             items.append(DimensionDrillDownItem(
                 period=period,
-                department_code=dept_code,
+                department_code=dept_code or "全院",
                 department_name=dept_name,
                 item_code=item_code,
                 item_name=item_name,
@@ -424,7 +626,7 @@ def get_dimension_drilldown_by_task(
                 items=[],
                 total_amount=Decimal('0'),
                 total_quantity=Decimal('0'),
-                message="未找到该科室该月份该维度的收费明细数据"
+                message="未找到该月份该维度的收费明细数据"
             )
             
     except Exception as e:
@@ -439,6 +641,7 @@ def get_dimension_drilldown_by_task(
 def preview_value_distribution(
     department_id: int = Query(..., description="科室ID"),
     period: str = Query(..., description="年月 (YYYY-MM)"),
+    task_id: Optional[str] = Query(None, description="计算任务ID（可选，不传则使用最新任务）"),
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
@@ -446,11 +649,11 @@ def preview_value_distribution(
     预览科室主业价值分布（用于新建报告时）
     
     - 通过科室ID和年月直接查询，不需要报告ID
+    - 可指定 task_id 使用特定任务的数据
     - 从 calculation_results 表提取 Top 5 维度
     """
     from decimal import Decimal
-    from app.models.calculation_task import CalculationTask, CalculationResult
-    from app.models.model_version import ModelVersion
+    from app.models.calculation_task import CalculationResult
     
     hospital_id = get_current_hospital_id_or_raise()
     
@@ -462,25 +665,8 @@ def preview_value_distribution(
     if not department:
         raise HTTPException(status_code=400, detail="科室不存在或不属于当前医疗机构")
     
-    # 查找该医疗机构激活版本的最新完成任务
-    active_version = db.query(ModelVersion).filter(
-        ModelVersion.hospital_id == hospital_id,
-        ModelVersion.is_active == True
-    ).first()
-    
-    if not active_version:
-        return ValueDistributionResponse(
-            items=[],
-            total_value=Decimal('0'),
-            message="未找到激活的模型版本"
-        )
-    
-    # 查找最新完成的计算任务
-    task = db.query(CalculationTask).filter(
-        CalculationTask.model_version_id == active_version.id,
-        CalculationTask.period == period,
-        CalculationTask.status == "completed"
-    ).order_by(desc(CalculationTask.completed_at)).first()
+    # 获取任务
+    task = get_task_by_id_or_latest(db, hospital_id, period, task_id)
     
     if not task:
         return ValueDistributionResponse(
@@ -558,6 +744,7 @@ def preview_dimension_drilldown(
     department_id: int = Query(..., description="科室ID"),
     period: str = Query(..., description="年月 (YYYY-MM)"),
     node_id: int = Query(..., description="节点ID"),
+    task_id: Optional[str] = Query(None, description="计算任务ID（可选，不传则使用最新任务）"),
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
@@ -565,12 +752,12 @@ def preview_dimension_drilldown(
     预览维度下钻明细（用于新建报告时）
     
     - 通过科室ID、年月和节点ID直接查询，不需要报告ID
+    - 可指定 task_id 使用特定任务的数据
     - 查询该维度对应的收费项目明细
     """
     from decimal import Decimal
     from sqlalchemy import text
-    from app.models.calculation_task import CalculationTask, CalculationResult
-    from app.models.model_version import ModelVersion
+    from app.models.calculation_task import CalculationResult
     from app.models.dimension_item_mapping import DimensionItemMapping
     from app.models.charge_item import ChargeItem
     
@@ -587,24 +774,11 @@ def preview_dimension_drilldown(
     dept_code = department.his_code
     dept_name = department.accounting_unit_name or department.his_name
     
-    # 查找该医疗机构激活版本的最新完成任务
-    active_version = db.query(ModelVersion).filter(
-        ModelVersion.hospital_id == hospital_id,
-        ModelVersion.is_active == True
-    ).first()
-    
-    if not active_version:
-        raise HTTPException(status_code=404, detail="未找到激活的模型版本")
-    
-    # 查找最新完成的计算任务
-    task = db.query(CalculationTask).filter(
-        CalculationTask.model_version_id == active_version.id,
-        CalculationTask.period == period,
-        CalculationTask.status == "completed"
-    ).order_by(desc(CalculationTask.completed_at)).first()
+    # 获取任务
+    task = get_task_by_id_or_latest(db, hospital_id, period, task_id)
     
     if not task:
-        raise HTTPException(status_code=404, detail="未找到该月份的计算结果")
+        raise HTTPException(status_code=404, detail="未找到计算任务")
     
     # 查询该维度节点信息
     dimension_result = db.query(CalculationResult).filter(
@@ -622,6 +796,10 @@ def preview_dimension_drilldown(
     
     if not dimension_code:
         raise HTTPException(status_code=400, detail="该维度缺少编码信息，无法下钻")
+    
+    # 检查是否为指标维度（成本等），指标维度不支持下钻
+    if '-cost' in dimension_code:
+        raise HTTPException(status_code=400, detail="指标维度（成本等）不支持下钻")
     
     # 检查是否为支持下钻的维度
     is_doctor_dim = dimension_code.startswith('dim-doc-') and dimension_code != 'dim-doc-case'
@@ -784,6 +962,7 @@ def preview_dimension_drilldown(
 def preview_business_content(
     department_id: int = Query(..., description="科室ID"),
     period: str = Query(..., description="年月 (YYYY-MM)"),
+    task_id: Optional[str] = Query(None, description="计算任务ID（可选，不传则使用最新任务）"),
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
@@ -791,12 +970,12 @@ def preview_business_content(
     预览科室业务内涵展示（用于新建报告时）
     
     - 通过科室ID和年月直接查询，不需要报告ID
+    - 可指定 task_id 使用特定任务的数据
     - 对于 Top 5 维度，取收入 Top 5 的项目
     """
     from decimal import Decimal
     from sqlalchemy import text
-    from app.models.calculation_task import CalculationTask, CalculationResult
-    from app.models.model_version import ModelVersion
+    from app.models.calculation_task import CalculationResult
     from app.models.dimension_item_mapping import DimensionItemMapping
     from app.models.charge_item import ChargeItem
     
@@ -812,24 +991,8 @@ def preview_business_content(
     
     dept_code = department.his_code
     
-    # 查找该医疗机构激活版本的最新完成任务
-    active_version = db.query(ModelVersion).filter(
-        ModelVersion.hospital_id == hospital_id,
-        ModelVersion.is_active == True
-    ).first()
-    
-    if not active_version:
-        return BusinessContentResponse(
-            dimensions=[],
-            message="未找到激活的模型版本"
-        )
-    
-    # 查找最新完成的计算任务
-    task = db.query(CalculationTask).filter(
-        CalculationTask.model_version_id == active_version.id,
-        CalculationTask.period == period,
-        CalculationTask.status == "completed"
-    ).order_by(desc(CalculationTask.completed_at)).first()
+    # 获取任务
+    task = get_task_by_id_or_latest(db, hospital_id, period, task_id)
     
     if not task:
         return BusinessContentResponse(
@@ -1019,6 +1182,21 @@ def get_analysis_report(
     # 检查访问权限
     check_report_access(current_user, report)
     
+    # 获取工作流名称
+    workflow_name = None
+    if report.task_id:
+        from app.models.calculation_task import CalculationTask
+        from app.models.calculation_workflow import CalculationWorkflow
+        task = db.query(CalculationTask).filter(
+            CalculationTask.task_id == report.task_id
+        ).first()
+        if task and task.workflow_id:
+            workflow = db.query(CalculationWorkflow).filter(
+                CalculationWorkflow.id == task.workflow_id
+            ).first()
+            if workflow:
+                workflow_name = workflow.name
+    
     # 转换为响应格式
     dept = report.department
     return AnalysisReportSchema(
@@ -1028,6 +1206,8 @@ def get_analysis_report(
         department_code=dept.accounting_unit_code if dept else "",
         department_name=(dept.accounting_unit_name or dept.his_name) if dept else "",
         period=report.period,
+        task_id=report.task_id,
+        workflow_name=workflow_name,
         current_issues=report.current_issues,
         future_plans=report.future_plans,
         created_at=report.created_at,
@@ -1078,6 +1258,21 @@ def create_analysis_report(
             detail="该科室在该月份的分析报告已存在"
         )
     
+    # 获取工作流名称
+    workflow_name = None
+    if report.task_id:
+        from app.models.calculation_task import CalculationTask
+        from app.models.calculation_workflow import CalculationWorkflow
+        task = db.query(CalculationTask).filter(
+            CalculationTask.task_id == report.task_id
+        ).first()
+        if task and task.workflow_id:
+            workflow = db.query(CalculationWorkflow).filter(
+                CalculationWorkflow.id == task.workflow_id
+            ).first()
+            if workflow:
+                workflow_name = workflow.name
+    
     # 转换为响应格式
     return AnalysisReportSchema(
         id=report.id,
@@ -1086,6 +1281,8 @@ def create_analysis_report(
         department_code=department.accounting_unit_code,
         department_name=department.accounting_unit_name or department.his_name,
         period=report.period,
+        task_id=report.task_id,
+        workflow_name=workflow_name,
         current_issues=report.current_issues,
         future_plans=report.future_plans,
         created_at=report.created_at,
@@ -1127,6 +1324,17 @@ def update_analysis_report(
     
     # 转换为响应格式
     dept = report.department
+    
+    # 获取关联的计算任务信息
+    workflow_name = None
+    if report.task_id:
+        from app.models.calculation_task import CalculationTask
+        task = db.query(CalculationTask).filter(
+            CalculationTask.task_id == report.task_id
+        ).first()
+        if task and task.workflow:
+            workflow_name = task.workflow.name
+    
     return AnalysisReportSchema(
         id=report.id,
         hospital_id=report.hospital_id,
@@ -1134,6 +1342,8 @@ def update_analysis_report(
         department_code=dept.accounting_unit_code if dept else "",
         department_name=(dept.accounting_unit_name or dept.his_name) if dept else "",
         period=report.period,
+        task_id=report.task_id,
+        workflow_name=workflow_name,
         current_issues=report.current_issues,
         future_plans=report.future_plans,
         created_at=report.created_at,
@@ -1619,6 +1829,10 @@ def get_dimension_drilldown(
     
     if not dimension_code:
         raise HTTPException(status_code=400, detail="该维度缺少编码信息，无法下钻")
+    
+    # 检查是否为指标维度（成本等），指标维度不支持下钻
+    if '-cost' in dimension_code:
+        raise HTTPException(status_code=400, detail="指标维度（成本等）不支持下钻")
     
     # 检查是否为支持下钻的维度（医生、医技、护理序列中用charge_details计算的维度）
     is_doctor_dim = dimension_code.startswith('dim-doc-') and dimension_code != 'dim-doc-case'

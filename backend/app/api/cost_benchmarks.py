@@ -9,6 +9,8 @@ from datetime import datetime
 from urllib.parse import quote
 import io
 
+from app.utils.timezone import china_now
+
 from app.api import deps
 from app.models.cost_benchmark import CostBenchmark
 from app.models.model_version import ModelVersion
@@ -156,8 +158,8 @@ def export_cost_benchmarks(
         hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
         hospital_name = hospital.name if hospital else "未知医院"
         
-        # 生成文件名（医院名称_成本基准_时间戳.xlsx）
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        # 生成文件名（医院名称_成本基准_时间戳.xlsx）- 使用中国时间
+        timestamp = china_now().strftime('%Y%m%d_%H%M%S')
         filename = f"{hospital_name}_成本基准_{timestamp}.xlsx"
         
         # 返回文件

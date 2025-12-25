@@ -6,7 +6,7 @@
     top="5vh"
     append-to-body
     destroy-on-close
-    @open="loadDepartments"
+    @open="loadInitialData"
   >
     <div v-loading="loading" class="report-create-content">
       <!-- 基本信息 -->
@@ -26,7 +26,7 @@
                   placeholder="请选择科室"
                   filterable
                   style="width: 100%"
-                  @change="handleSelectionChange"
+                  @change="handleDepartmentChange"
                 >
                   <el-option
                     v-for="dept in departments"
@@ -38,16 +38,22 @@
               </el-form-item>
             </el-col>
             <el-col :span="12">
-              <el-form-item label="年月" prop="period">
-                <el-date-picker
-                  v-model="formData.period"
-                  type="month"
-                  placeholder="选择月份"
-                  format="YYYY-MM"
-                  value-format="YYYY-MM"
+              <el-form-item label="计算任务" prop="task_id">
+                <el-select
+                  v-model="formData.task_id"
+                  placeholder="请选择计算任务"
+                  filterable
+                  clearable
                   style="width: 100%"
-                  @change="handleSelectionChange"
-                />
+                  @change="handleTaskChange"
+                >
+                  <el-option
+                    v-for="task in availableTasks"
+                    :key="task.task_id"
+                    :label="formatTaskLabel(task)"
+                    :value="task.task_id"
+                  />
+                </el-select>
               </el-form-item>
             </el-col>
           </el-row>
@@ -57,8 +63,8 @@
       <!-- 科室主业价值分布（只读） -->
       <div class="section">
         <h3 class="section-title">科室主业价值分布（只读）</h3>
-        <div v-if="!formData.department_id || !formData.period" class="data-placeholder">
-          请先选择科室和年月
+        <div v-if="!formData.department_id || !formData.task_id" class="data-placeholder">
+          请先选择科室和计算任务
         </div>
         <template v-else>
           <el-table
@@ -103,8 +109,8 @@
       <!-- 科室业务内涵展示（只读） -->
       <div class="section">
         <h3 class="section-title">科室业务内涵展示（只读）</h3>
-        <div v-if="!formData.department_id || !formData.period" class="data-placeholder">
-          请先选择科室和年月
+        <div v-if="!formData.department_id || !formData.task_id" class="data-placeholder">
+          请先选择科室和计算任务
         </div>
         <template v-else>
           <div v-loading="previewLoading">
@@ -154,10 +160,22 @@
       <!-- 当前存在问题（可编辑） -->
       <div class="section">
         <h3 class="section-title">
-          当前存在问题
-          <span class="char-count" :class="{ 'over-limit': currentIssuesLength > 2000 }">
-            {{ currentIssuesLength }}/2000
-          </span>
+          <span>当前存在问题</span>
+          <div class="title-actions">
+            <el-button
+              type="primary"
+              size="small"
+              :loading="generatingIssues"
+              :disabled="!formData.department_id || !formData.task_id"
+              @click="generateIssues"
+            >
+              <el-icon><MagicStick /></el-icon>
+              智能分析
+            </el-button>
+            <span class="char-count" :class="{ 'over-limit': currentIssuesLength > 2000 }">
+              {{ currentIssuesLength }}/2000
+            </span>
+          </div>
         </h3>
         <MdEditor
           v-model="formData.current_issues"
@@ -176,10 +194,22 @@
       <!-- 未来发展计划（可编辑） -->
       <div class="section">
         <h3 class="section-title">
-          未来发展计划
-          <span class="char-count" :class="{ 'over-limit': futurePlansLength > 2000 }">
-            {{ futurePlansLength }}/2000
-          </span>
+          <span>未来发展计划</span>
+          <div class="title-actions">
+            <el-button
+              type="primary"
+              size="small"
+              :loading="generatingPlans"
+              :disabled="!formData.department_id || !formData.task_id"
+              @click="generatePlans"
+            >
+              <el-icon><MagicStick /></el-icon>
+              智能分析
+            </el-button>
+            <span class="char-count" :class="{ 'over-limit': futurePlansLength > 2000 }">
+              {{ futurePlansLength }}/2000
+            </span>
+          </div>
         </h3>
         <MdEditor
           v-model="formData.future_plans"
@@ -280,7 +310,8 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { MagicStick } from '@element-plus/icons-vue'
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 import request from '@/utils/request'
@@ -289,10 +320,13 @@ import {
   previewValueDistribution,
   previewBusinessContent,
   previewDimensionDrillDown,
+  getAvailableTasks,
   type ValueDistributionItem,
   type DimensionBusinessContent,
-  type DimensionDrillDownItem
+  type DimensionDrillDownItem,
+  type CalculationTaskBrief
 } from '@/api/analysis-reports'
+import { generateReportContentPreview } from '@/api/ai-prompt-config'
 
 interface Department {
   id: number
@@ -342,7 +376,10 @@ const formRef = ref<FormInstance>()
 const loading = ref(false)
 const saving = ref(false)
 const previewLoading = ref(false)
+const generatingIssues = ref(false)
+const generatingPlans = ref(false)
 const departments = ref<Department[]>([])
+const availableTasks = ref<CalculationTaskBrief[]>([])
 
 // 预览数据
 const valueDistribution = ref<ValueDistributionItem[]>([])
@@ -377,21 +414,39 @@ const resetDrillDownPagination = () => {
   drillDownPageSize.value = 10
 }
 
+// 判断是否为成本/指标维度（不支持下钻）
+const isCostDimension = (row: any) => {
+  const dimCode = row.dimension_code || ''
+  const dimName = row.dimension_name || ''
+  if (dimCode.includes('-cost')) return true
+  const costNames = ['人员经费', '不收费卫生材料费', '折旧（风险）费', '折旧风险费', '其他费用', '成本']
+  if (costNames.includes(dimName)) return true
+  return false
+}
+
 // 判断是否可以下钻
 const canDrillDown = (row: any) => {
-  return row.node_id && row.dimension_name
+  if (!row.node_id || !row.dimension_name) return false
+  // 指标维度（成本等）不支持下钻
+  if (isCostDimension(row)) return false
+  return true
 }
 
 // 处理下钻
 const handleDrillDown = async (row: any) => {
-  if (!formData.department_id || !formData.period) return
+  if (!formData.department_id || !formData.task_id) return
   
   drillDownVisible.value = true
   drillDownLoading.value = true
   drillDownData.value = null
   
   try {
-    const res = await previewDimensionDrillDown(formData.department_id, formData.period, row.node_id || 0)
+    const res = await previewDimensionDrillDown(
+      formData.department_id, 
+      formData.period, 
+      row.node_id || 0,
+      formData.task_id
+    )
     drillDownData.value = res
   } catch (error: any) {
     ElMessage.error(error.response?.data?.detail || '加载下钻数据失败')
@@ -403,6 +458,7 @@ const handleDrillDown = async (row: any) => {
 
 const formData = reactive({
   department_id: null as number | null,
+  task_id: '' as string,
   period: '',
   current_issues: '',
   future_plans: ''
@@ -412,9 +468,16 @@ const rules: FormRules = {
   department_id: [
     { required: true, message: '请选择科室', trigger: 'change' }
   ],
-  period: [
-    { required: true, message: '请选择年月', trigger: 'change' }
+  task_id: [
+    { required: true, message: '请选择计算任务', trigger: 'change' }
   ]
+}
+
+// 格式化任务选择器标签
+const formatTaskLabel = (task: CalculationTaskBrief) => {
+  const taskIdShort = task.task_id.substring(0, 8) + '...'
+  const workflowName = task.workflow_name || '默认流程'
+  return `${taskIdShort} (${task.period} - ${workflowName})`
 }
 
 // 验证错误
@@ -443,10 +506,103 @@ const validateFuturePlans = () => {
   }
 }
 
-// 加载科室列表
-const loadDepartments = async () => {
+// 智能生成当前存在问题
+const generateIssues = async () => {
+  if (!formData.department_id || !formData.task_id) {
+    ElMessage.warning('请先选择科室和计算任务')
+    return
+  }
+  
+  // 如果已有内容，提示确认
+  if (formData.current_issues) {
+    try {
+      await ElMessageBox.confirm(
+        '当前已有内容，智能分析将覆盖现有内容，是否继续？',
+        '提示',
+        {
+          confirmButtonText: '继续',
+          cancelButtonText: '取消',
+          type: 'warning'
+        }
+      )
+    } catch {
+      return
+    }
+  }
+  
+  generatingIssues.value = true
+  try {
+    const result = await generateReportContentPreview({
+      department_id: formData.department_id,
+      period: formData.period,
+      task_id: formData.task_id,
+      category: 'report_issues'
+    })
+    
+    if (result.success && result.content) {
+      formData.current_issues = result.content
+      ElMessage.success(`智能分析完成，耗时 ${result.duration?.toFixed(1) || 0} 秒`)
+    } else {
+      ElMessage.error(result.error || '智能分析失败')
+    }
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || '智能分析失败')
+  } finally {
+    generatingIssues.value = false
+  }
+}
+
+// 智能生成未来发展计划
+const generatePlans = async () => {
+  if (!formData.department_id || !formData.task_id) {
+    ElMessage.warning('请先选择科室和计算任务')
+    return
+  }
+  
+  // 如果已有内容，提示确认
+  if (formData.future_plans) {
+    try {
+      await ElMessageBox.confirm(
+        '当前已有内容，智能分析将覆盖现有内容，是否继续？',
+        '提示',
+        {
+          confirmButtonText: '继续',
+          cancelButtonText: '取消',
+          type: 'warning'
+        }
+      )
+    } catch {
+      return
+    }
+  }
+  
+  generatingPlans.value = true
+  try {
+    const result = await generateReportContentPreview({
+      department_id: formData.department_id,
+      period: formData.period,
+      task_id: formData.task_id,
+      category: 'report_plans'
+    })
+    
+    if (result.success && result.content) {
+      formData.future_plans = result.content
+      ElMessage.success(`智能分析完成，耗时 ${result.duration?.toFixed(1) || 0} 秒`)
+    } else {
+      ElMessage.error(result.error || '智能分析失败')
+    }
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || '智能分析失败')
+  } finally {
+    generatingPlans.value = false
+  }
+}
+
+// 加载初始数据
+const loadInitialData = async () => {
   // 重置表单
   formData.department_id = null
+  formData.task_id = ''
   formData.period = ''
   formData.current_issues = ''
   formData.future_plans = ''
@@ -458,51 +614,80 @@ const loadDepartments = async () => {
   valueDistributionMessage.value = null
   businessContentDimensions.value = []
   businessContentMessage.value = null
+  availableTasks.value = []
   
   loading.value = true
   try {
-    // 获取所有参与评估的科室
-    const res = await request.get('/departments', {
-      params: {
-        page: 1,
-        size: 1000,
-        is_active: true,
-        sort_by: 'sort_order',
-        sort_order: 'asc'
-      }
-    })
-    departments.value = res.items
+    // 并行加载科室列表和计算任务列表
+    const [deptRes, tasksRes] = await Promise.all([
+      request.get('/departments', {
+        params: {
+          page: 1,
+          size: 1000,
+          is_active: true,
+          sort_by: 'sort_order',
+          sort_order: 'asc'
+        }
+      }),
+      getAvailableTasks({ status: 'completed' })
+    ])
+    departments.value = deptRes.items
+    availableTasks.value = tasksRes
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.detail || '加载科室列表失败')
+    ElMessage.error(error.response?.data?.detail || '加载数据失败')
   } finally {
     loading.value = false
   }
 }
 
-// 当科室或年月变化时加载预览数据
-const handleSelectionChange = async () => {
+// 当科室变化时
+const handleDepartmentChange = async () => {
   // 清空之前的预览数据
   valueDistribution.value = []
   valueDistributionMessage.value = null
   businessContentDimensions.value = []
   businessContentMessage.value = null
   
-  // 如果科室和年月都已选择，加载预览数据
-  if (formData.department_id && formData.period) {
+  // 如果科室和任务都已选择，加载预览数据
+  if (formData.department_id && formData.task_id) {
+    await loadPreviewData()
+  }
+}
+
+// 当计算任务变化时
+const handleTaskChange = async () => {
+  // 更新 period
+  if (formData.task_id) {
+    const task = availableTasks.value.find(t => t.task_id === formData.task_id)
+    if (task) {
+      formData.period = task.period
+    }
+  } else {
+    formData.period = ''
+  }
+  
+  // 清空之前的预览数据
+  valueDistribution.value = []
+  valueDistributionMessage.value = null
+  businessContentDimensions.value = []
+  businessContentMessage.value = null
+  
+  // 如果科室和任务都已选择，加载预览数据
+  if (formData.department_id && formData.task_id) {
     await loadPreviewData()
   }
 }
 
 // 加载预览数据
 const loadPreviewData = async () => {
-  if (!formData.department_id || !formData.period) return
+  if (!formData.department_id || !formData.task_id) return
   
   previewLoading.value = true
   try {
-    // 并行加载价值分布和业务内涵
+    // 并行加载价值分布和业务内涵，传入 task_id
     const [valueRes, contentRes] = await Promise.all([
-      previewValueDistribution(formData.department_id, formData.period),
-      previewBusinessContent(formData.department_id, formData.period)
+      previewValueDistribution(formData.department_id, formData.period, formData.task_id),
+      previewBusinessContent(formData.department_id, formData.period, formData.task_id)
     ])
     
     valueDistribution.value = valueRes.items || []
@@ -548,6 +733,7 @@ const handleCreate = async () => {
     await createAnalysisReport({
       department_id: formData.department_id!,
       period: formData.period,
+      task_id: formData.task_id || null,
       current_issues: formData.current_issues || null,
       future_plans: formData.future_plans || null
     })
@@ -581,6 +767,12 @@ const handleCreate = async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.title-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .char-count {

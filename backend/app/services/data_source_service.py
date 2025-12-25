@@ -468,3 +468,86 @@ class DataSourceService:
             return ConnectionStatus.ONLINE
         else:
             return ConnectionStatus.ERROR
+
+    @staticmethod
+    def get_tables(db: Session, data_source_id: int) -> List[Dict[str, Any]]:
+        """
+        获取数据源的所有表
+        
+        Args:
+            db: 数据库会话
+            data_source_id: 数据源ID
+            
+        Returns:
+            表列表，每个表包含 name, table_type (fact/dimension)
+        """
+        data_source = db.query(DataSource).filter(DataSource.id == data_source_id).first()
+        if not data_source:
+            raise HTTPException(status_code=404, detail="数据源不存在")
+        
+        if not data_source.is_enabled:
+            raise HTTPException(status_code=400, detail="数据源未启用")
+        
+        # 获取或创建连接池
+        engine = connection_manager.get_pool(data_source_id)
+        if not engine:
+            try:
+                engine = connection_manager.create_pool(data_source)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"无法连接数据源: {str(e)}")
+        
+        # 根据数据库类型构建查询
+        schema_name = data_source.schema_name or 'public'
+        
+        if data_source.db_type == DBType.POSTGRESQL:
+            sql = text("""
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = :schema
+                AND table_type = 'BASE TABLE'
+                ORDER BY table_name
+            """)
+        elif data_source.db_type == DBType.MYSQL:
+            sql = text("""
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = :schema
+                AND table_type = 'BASE TABLE'
+                ORDER BY table_name
+            """)
+            schema_name = data_source.database_name
+        elif data_source.db_type == DBType.SQLSERVER:
+            sql = text("""
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = :schema
+                AND table_type = 'BASE TABLE'
+                ORDER BY table_name
+            """)
+            schema_name = schema_name or 'dbo'
+        else:
+            raise HTTPException(status_code=400, detail=f"不支持的数据库类型: {data_source.db_type}")
+        
+        try:
+            with engine.connect() as conn:
+                result = conn.execute(sql, {"schema": schema_name})
+                tables = []
+                for row in result:
+                    table_name = row[0]
+                    # 根据表名前缀判断表类型
+                    # 维表：以 mb_、dim_、dimension_ 开头
+                    # 事实表：其他
+                    lower_name = table_name.lower()
+                    if lower_name.startswith(('mb_', 'dim_', 'dimension_')):
+                        table_type = 'dimension'
+                    else:
+                        table_type = 'fact'
+                    
+                    tables.append({
+                        "name": table_name,
+                        "table_type": table_type
+                    })
+                
+                return tables
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"查询表列表失败: {str(e)}")

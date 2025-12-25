@@ -124,7 +124,7 @@ async def health_check():
 
 
 # 导入路由
-from app.api import auth, users, roles, departments, dimension_items, charge_items, model_versions, model_nodes, calculation_workflows, calculation_steps, data_sources, system_settings, calculation_tasks, hospitals, data_templates, data_issues, orientation_rules, orientation_benchmarks, orientation_ladders, ai_config, ai_prompt_config, classification_tasks, classification_plans, cost_benchmarks, reference_values, analysis_reports
+from app.api import auth, users, roles, departments, dimension_items, charge_items, model_versions, model_nodes, calculation_workflows, calculation_steps, data_sources, system_settings, calculation_tasks, hospitals, data_templates, data_issues, orientation_rules, orientation_benchmarks, orientation_ladders, ai_config, ai_prompt_config, classification_tasks, classification_plans, cost_benchmarks, reference_values, analysis_reports, cost_reports, discipline_rules, ai_interfaces, ai_prompt_modules, metric_projects, metric_topics, metrics, conversation_groups, conversations
 
 # 注册路由
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
@@ -147,9 +147,18 @@ app.include_router(orientation_rules.router, prefix="/api/v1/orientation-rules",
 app.include_router(orientation_benchmarks.router, prefix="/api/v1/orientation-benchmarks", tags=["导向基准管理"])
 app.include_router(orientation_ladders.router, prefix="/api/v1/orientation-ladders", tags=["导向阶梯管理"])
 app.include_router(cost_benchmarks.router, prefix="/api/v1/cost-benchmarks", tags=["成本基准管理"])
+app.include_router(discipline_rules.router, prefix="/api/v1/discipline-rules", tags=["学科规则管理"])
 app.include_router(ai_config.router, prefix="/api/v1/ai-config", tags=["AI接口配置"])
 app.include_router(ai_prompt_config.router, prefix="/api/v1/ai-prompt-config", tags=["AI提示词配置"])
 app.include_router(classification_tasks.router, prefix="/api/v1/classification-tasks", tags=["分类任务管理"])
 app.include_router(classification_plans.router, prefix="/api/v1/classification-plans", tags=["分类预案管理"])
 app.include_router(reference_values.router, prefix="/api/v1/reference-values", tags=["参考价值管理"])
 app.include_router(analysis_reports.router, prefix="/api/v1/analysis-reports", tags=["运营分析报告"])
+app.include_router(cost_reports.router, prefix="/api/v1/cost-reports", tags=["成本报表管理"])
+app.include_router(ai_interfaces.router, prefix="/api/v1/ai-interfaces", tags=["AI接口管理"])
+app.include_router(ai_prompt_modules.router, prefix="/api/v1/ai-prompt-modules", tags=["AI提示词模块管理"])
+app.include_router(metric_projects.router, prefix="/api/v1/metric-projects", tags=["指标项目管理"])
+app.include_router(metric_topics.router, prefix="/api/v1/metric-topics", tags=["指标主题管理"])
+app.include_router(metrics.router, prefix="/api/v1/metrics", tags=["指标管理"])
+app.include_router(conversation_groups.router, prefix="/api/v1/conversation-groups", tags=["对话分组管理"])
+app.include_router(conversations.router, prefix="/api/v1/conversations", tags=["对话管理"])

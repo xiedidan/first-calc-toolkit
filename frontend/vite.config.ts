@@ -35,9 +35,17 @@ export default defineConfig({
             if (id.includes('element-plus')) {
               return 'element-plus'
             }
-            // Vue 生态单独打包
-            if (id.includes('vue') || id.includes('pinia') || id.includes('@vue')) {
-              return 'vue-vendor'
+            // Vue 核心库单独打包（避免与其他 vue 相关包混在一起导致循环依赖）
+            if (id.includes('/vue/') || id.includes('/@vue/')) {
+              return 'vue-core'
+            }
+            // Pinia 单独打包
+            if (id.includes('pinia')) {
+              return 'pinia'
+            }
+            // Vue Router 单独打包
+            if (id.includes('vue-router')) {
+              return 'vue-router'
             }
             // 其他第三方库
             return 'vendor'

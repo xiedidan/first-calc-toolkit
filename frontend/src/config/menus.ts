@@ -37,6 +37,7 @@ export const SYSTEM_MENUS: MenuItem[] = [
       { path: '/model-versions', name: '模型版本管理' },
       { path: '/dimension-items', name: '维度目录管理' },
       { path: '/cost-benchmarks', name: '成本基准管理' },
+      { path: '/discipline-rules', name: '学科规则管理' },
       { path: '/calculation-workflows', name: '计算流程管理' },
     ]
   },
@@ -51,7 +52,13 @@ export const SYSTEM_MENUS: MenuItem[] = [
   { path: '/calculation-tasks', name: '计算任务管理', icon: 'Clock' },
   { path: '/results', name: '业务价值报表', icon: 'DataAnalysis' },
   { path: '/adv-modeling', name: 'ADV自动建模', icon: 'MagicStick', disabled: true },
-  { path: '/intelligent-query', name: '智能问数系统', icon: 'ChatDotRound', disabled: true },
+  {
+    path: '/intelligent-query', name: '智能问数系统', icon: 'ChatDotRound',
+    children: [
+      { path: '/smart-data-qa', name: '智能数据问答' },
+      { path: '/metric-assets', name: '指标资产管理' },
+    ]
+  },
   {
     path: '/operation-analysis', name: '运营分析报告', icon: 'TrendCharts',
     children: [
@@ -64,6 +71,7 @@ export const SYSTEM_MENUS: MenuItem[] = [
     children: [
       { path: '/departments', name: '科室对照管理' },
       { path: '/charge-items', name: '收费项目管理' },
+      { path: '/cost-reports', name: '成本报表管理' },
       { path: '/reference-values', name: '参考价值管理' },
       { path: '/data-templates', name: '数据模板管理', adminOnly: true },
     ]

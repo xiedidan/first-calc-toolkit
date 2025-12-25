@@ -9,6 +9,7 @@ from sqlalchemy import or_, desc, asc, func
 from decimal import Decimal
 
 from app.api import deps
+from app.utils.timezone import china_now
 from app.models.data_template import DataTemplate
 from app.models.hospital import Hospital
 from app.schemas.data_template import (
@@ -644,9 +645,9 @@ async def export_templates(
     if not templates:
         raise HTTPException(status_code=404, detail="未找到数据模板")
     
-    # 生成Markdown文档
+    # 生成Markdown文档 - 使用中国时间
     md_content = f"# 数据模板文档\n\n"
-    md_content += f"**导出时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+    md_content += f"**导出时间**: {china_now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
     md_content += f"**模板数量**: {len(templates)}\n\n"
     md_content += "---\n\n"
     
@@ -702,7 +703,7 @@ async def export_templates(
     hospital_name = hospital.name if hospital else "未知医院"
     
     from urllib.parse import quote
-    timestamp = datetime.now().strftime('%Y%m%d')
+    timestamp = china_now().strftime('%Y%m%d')  # 使用中国时间
     
     # 根据格式返回不同类型的文件
     if format.lower() == "pdf":
@@ -779,7 +780,7 @@ async def export_templates(
         story = []
         story.append(Paragraph("数据模板文档", title_style))
         story.append(Spacer(1, 0.5*cm))
-        story.append(Paragraph(f"导出时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", body_style))
+        story.append(Paragraph(f"导出时间: {china_now().strftime('%Y-%m-%d %H:%M:%S')}", body_style))
         story.append(Paragraph(f"模板数量: {len(templates)}", body_style))
         story.append(Spacer(1, 1*cm))
         

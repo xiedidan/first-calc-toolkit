@@ -213,72 +213,6 @@ def create_dimension_items(
     }
 
 
-@router.put("/{mapping_id}")
-def update_dimension_item(
-    mapping_id: int,
-    new_dimension_code: str,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user),
-):
-    """更新收费项目的维度"""
-    # 获取当前医疗机构ID
-    hospital_id = get_current_hospital_id_or_raise()
-    
-    # 查询映射关系（必须属于当前医疗机构）
-    mapping = db.query(DimensionItemMapping).filter(
-        DimensionItemMapping.id == mapping_id,
-        DimensionItemMapping.hospital_id == hospital_id
-    ).first()
-    if not mapping:
-        raise HTTPException(status_code=404, detail="映射关系不存在")
-    
-    # 检查新维度是否存在
-    from app.models.model_node import ModelNode
-    new_dimension = db.query(ModelNode).filter(ModelNode.code == new_dimension_code).first()
-    if not new_dimension:
-        raise HTTPException(status_code=404, detail="目标维度不存在")
-    
-    # 检查新的映射关系是否已存在（在当前医疗机构内）
-    existing = db.query(DimensionItemMapping).filter(
-        DimensionItemMapping.hospital_id == hospital_id,
-        DimensionItemMapping.dimension_code == new_dimension_code,
-        DimensionItemMapping.item_code == mapping.item_code,
-        DimensionItemMapping.id != mapping_id
-    ).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="该收费项目已存在于目标维度中")
-    
-    # 更新维度
-    mapping.dimension_code = new_dimension_code
-    db.commit()
-    
-    return {"message": "更新成功"}
-
-
-@router.delete("/{mapping_id}")
-def delete_dimension_item(
-    mapping_id: int,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user),
-):
-    """删除维度关联的收费项目"""
-    # 获取当前医疗机构ID
-    hospital_id = get_current_hospital_id_or_raise()
-    
-    # 查询映射关系（必须属于当前医疗机构）
-    mapping = db.query(DimensionItemMapping).filter(
-        DimensionItemMapping.id == mapping_id,
-        DimensionItemMapping.hospital_id == hospital_id
-    ).first()
-    if not mapping:
-        raise HTTPException(status_code=404, detail="映射关系不存在")
-    
-    db.delete(mapping)
-    db.commit()
-    
-    return {"message": "删除成功"}
-
-
 @router.delete("/dimension/{dimension_code}/clear-all")
 def clear_all_dimension_items(
     dimension_code: str,
@@ -422,6 +356,277 @@ def clear_all_no_dimension_items(
     }
 
 
+@router.delete("/filtered/clear-all")
+def clear_filtered_items(
+    dimension_codes: Optional[str] = Query(None, description="维度节点编码列表（逗号分隔）"),
+    keyword: Optional[str] = Query(None, description="搜索关键词"),
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user),
+):
+    """清除当前筛选条件下的所有项目"""
+    # 获取当前医疗机构ID
+    hospital_id = get_current_hospital_id_or_raise()
+    
+    # 构建查询
+    query = db.query(DimensionItemMapping.id).filter(
+        DimensionItemMapping.hospital_id == hospital_id
+    )
+    
+    # 如果指定了维度编码，则过滤
+    if dimension_codes:
+        code_list = [code.strip() for code in dimension_codes.split(',') if code.strip()]
+        if code_list:
+            query = query.filter(DimensionItemMapping.dimension_code.in_(code_list))
+    
+    # 关键词搜索
+    if keyword:
+        query = query.outerjoin(
+            ChargeItem,
+            and_(
+                DimensionItemMapping.item_code == ChargeItem.item_code,
+                ChargeItem.hospital_id == hospital_id
+            )
+        ).filter(
+            or_(
+                DimensionItemMapping.item_code.contains(keyword),
+                (ChargeItem.item_name.isnot(None)) & (ChargeItem.item_name.contains(keyword)),
+                (ChargeItem.item_category.isnot(None)) & (ChargeItem.item_category.contains(keyword)),
+            )
+        )
+    
+    # 获取要删除的ID列表
+    ids_to_delete = [id[0] for id in query.all()]
+    
+    if not ids_to_delete:
+        return {
+            "message": "没有找到符合条件的记录",
+            "deleted_count": 0
+        }
+    
+    # 删除这些记录
+    deleted_count = db.query(DimensionItemMapping).filter(
+        DimensionItemMapping.id.in_(ids_to_delete)
+    ).delete(synchronize_session=False)
+    
+    db.commit()
+    
+    return {
+        "message": f"已清除筛选项目",
+        "deleted_count": deleted_count
+    }
+
+
+@router.get("/duplicates", response_model=DimensionItemList)
+def get_duplicate_items(
+    page: int = Query(1, ge=1, description="页码"),
+    size: int = Query(10, ge=1, le=10000, description="每页数量"),
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user),
+):
+    """获取重复记录（同一项目在同一父级维度下出现多次）
+    
+    重复的定义：同一个收费项目(item_code)在同一个父级维度(parent_id)下的多个末级维度中出现
+    例如：某手术项目在"医生-手术-门诊"和"医生-手术-住院"下都出现，则都是重复记录
+    """
+    from app.models.model_node import ModelNode
+    from app.models.model_version import ModelVersion
+    from sqlalchemy import func, text
+    
+    # 获取当前医疗机构ID
+    hospital_id = get_current_hospital_id_or_raise()
+    
+    # 获取当前激活的模型版本ID
+    active_version = db.query(ModelVersion).filter(
+        ModelVersion.hospital_id == hospital_id,
+        ModelVersion.is_active == True
+    ).first()
+    
+    if not active_version:
+        return DimensionItemList(total=0, items=[])
+    
+    # 使用原生SQL查询重复记录
+    # 逻辑：找出同一个item_code在同一个parent_id下出现多次的记录
+    duplicate_sql = text("""
+        WITH item_parent AS (
+            -- 获取每个映射记录对应的维度的父节点ID
+            SELECT 
+                dim.id,
+                dim.dimension_code,
+                dim.item_code,
+                mn.parent_id
+            FROM dimension_item_mappings dim
+            JOIN model_nodes mn ON dim.dimension_code = mn.code AND mn.version_id = :version_id
+            WHERE dim.hospital_id = :hospital_id
+        ),
+        duplicate_groups AS (
+            -- 找出在同一父节点下出现多次的item_code
+            SELECT item_code, parent_id
+            FROM item_parent
+            GROUP BY item_code, parent_id
+            HAVING COUNT(*) > 1
+        )
+        -- 返回所有重复记录的ID
+        SELECT ip.id
+        FROM item_parent ip
+        JOIN duplicate_groups dg ON ip.item_code = dg.item_code AND ip.parent_id = dg.parent_id
+        ORDER BY ip.item_code, ip.parent_id
+    """)
+    
+    result = db.execute(duplicate_sql, {
+        "hospital_id": hospital_id,
+        "version_id": active_version.id
+    })
+    duplicate_ids = [row[0] for row in result.fetchall()]
+    
+    if not duplicate_ids:
+        return DimensionItemList(total=0, items=[])
+    
+    # 查询这些重复记录的详细信息
+    query = db.query(
+        DimensionItemMapping.id,
+        DimensionItemMapping.dimension_code,
+        DimensionItemMapping.item_code,
+        DimensionItemMapping.created_at,
+        ChargeItem.item_name,
+        ChargeItem.item_category,
+        ModelNode.name.label('dimension_name')
+    ).filter(
+        DimensionItemMapping.id.in_(duplicate_ids)
+    ).outerjoin(
+        ChargeItem,
+        and_(
+            DimensionItemMapping.item_code == ChargeItem.item_code,
+            ChargeItem.hospital_id == hospital_id
+        )
+    ).outerjoin(
+        ModelNode,
+        and_(
+            DimensionItemMapping.dimension_code == ModelNode.code,
+            ModelNode.version_id == active_version.id
+        )
+    ).order_by(DimensionItemMapping.item_code, ModelNode.parent_id)
+    
+    # 总数
+    total = len(duplicate_ids)
+    
+    # 分页
+    results = query.offset((page - 1) * size).limit(size).all()
+    
+    # 构建完整的维度路径
+    def build_dimension_path(dimension_code: str) -> str:
+        if not dimension_code:
+            return ""
+        
+        node = db.query(ModelNode).filter(
+            ModelNode.code == dimension_code,
+            ModelNode.version_id == active_version.id
+        ).first()
+        if not node:
+            return ""
+        
+        path_parts = [node.name]
+        current = node
+        
+        while current.parent_id:
+            parent = db.query(ModelNode).filter(ModelNode.id == current.parent_id).first()
+            if parent:
+                path_parts.insert(0, parent.name)
+                current = parent
+            else:
+                break
+        
+        return " - ".join(path_parts)
+    
+    # 转换为Schema
+    items = [
+        DimensionItemMappingSchema(
+            dimension_code=r.dimension_code,
+            item_code=r.item_code,
+            id=r.id,
+            item_name=r.item_name if r.item_name else None,
+            item_category=r.item_category if r.item_category else None,
+            dimension_name=build_dimension_path(r.dimension_code) if r.dimension_code else None,
+            created_at=r.created_at
+        )
+        for r in results
+    ]
+    
+    return DimensionItemList(total=total, items=items)
+
+
+@router.delete("/duplicates/clear-all")
+def clear_all_duplicate_items(
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user),
+):
+    """清除所有重复记录"""
+    from app.models.model_node import ModelNode
+    from app.models.model_version import ModelVersion
+    from sqlalchemy import text
+    
+    # 获取当前医疗机构ID
+    hospital_id = get_current_hospital_id_or_raise()
+    
+    # 获取当前激活的模型版本ID
+    active_version = db.query(ModelVersion).filter(
+        ModelVersion.hospital_id == hospital_id,
+        ModelVersion.is_active == True
+    ).first()
+    
+    if not active_version:
+        return {
+            "message": "没有找到激活的模型版本",
+            "deleted_count": 0
+        }
+    
+    # 查询重复记录的ID
+    duplicate_sql = text("""
+        WITH item_parent AS (
+            SELECT 
+                dim.id,
+                dim.dimension_code,
+                dim.item_code,
+                mn.parent_id
+            FROM dimension_item_mappings dim
+            JOIN model_nodes mn ON dim.dimension_code = mn.code AND mn.version_id = :version_id
+            WHERE dim.hospital_id = :hospital_id
+        ),
+        duplicate_groups AS (
+            SELECT item_code, parent_id
+            FROM item_parent
+            GROUP BY item_code, parent_id
+            HAVING COUNT(*) > 1
+        )
+        SELECT ip.id
+        FROM item_parent ip
+        JOIN duplicate_groups dg ON ip.item_code = dg.item_code AND ip.parent_id = dg.parent_id
+    """)
+    
+    result = db.execute(duplicate_sql, {
+        "hospital_id": hospital_id,
+        "version_id": active_version.id
+    })
+    duplicate_ids = [row[0] for row in result.fetchall()]
+    
+    if not duplicate_ids:
+        return {
+            "message": "没有找到重复记录",
+            "deleted_count": 0
+        }
+    
+    # 删除这些记录
+    deleted_count = db.query(DimensionItemMapping).filter(
+        DimensionItemMapping.id.in_(duplicate_ids)
+    ).delete(synchronize_session=False)
+    
+    db.commit()
+    
+    return {
+        "message": f"已清除所有重复记录",
+        "deleted_count": deleted_count
+    }
+
+
 @router.get("/charge-items/search", response_model=list[ChargeItemSchema])
 def search_charge_items(
     keyword: str = Query(..., description="搜索关键词"),
@@ -456,6 +661,74 @@ def search_charge_items(
     
     items = query.limit(limit).all()
     return items
+
+
+# 通配路由必须放在具体路径之后
+
+@router.put("/{mapping_id}")
+def update_dimension_item(
+    mapping_id: int,
+    new_dimension_code: str,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user),
+):
+    """更新收费项目的维度"""
+    # 获取当前医疗机构ID
+    hospital_id = get_current_hospital_id_or_raise()
+    
+    # 查询映射关系（必须属于当前医疗机构）
+    mapping = db.query(DimensionItemMapping).filter(
+        DimensionItemMapping.id == mapping_id,
+        DimensionItemMapping.hospital_id == hospital_id
+    ).first()
+    if not mapping:
+        raise HTTPException(status_code=404, detail="映射关系不存在")
+    
+    # 检查新维度是否存在
+    from app.models.model_node import ModelNode
+    new_dimension = db.query(ModelNode).filter(ModelNode.code == new_dimension_code).first()
+    if not new_dimension:
+        raise HTTPException(status_code=404, detail="目标维度不存在")
+    
+    # 检查新的映射关系是否已存在（在当前医疗机构内）
+    existing = db.query(DimensionItemMapping).filter(
+        DimensionItemMapping.hospital_id == hospital_id,
+        DimensionItemMapping.dimension_code == new_dimension_code,
+        DimensionItemMapping.item_code == mapping.item_code,
+        DimensionItemMapping.id != mapping_id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="该收费项目已存在于目标维度中")
+    
+    # 更新维度
+    mapping.dimension_code = new_dimension_code
+    db.commit()
+    
+    return {"message": "更新成功"}
+
+
+@router.delete("/{mapping_id}")
+def delete_dimension_item(
+    mapping_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user),
+):
+    """删除维度关联的收费项目"""
+    # 获取当前医疗机构ID
+    hospital_id = get_current_hospital_id_or_raise()
+    
+    # 查询映射关系（必须属于当前医疗机构）
+    mapping = db.query(DimensionItemMapping).filter(
+        DimensionItemMapping.id == mapping_id,
+        DimensionItemMapping.hospital_id == hospital_id
+    ).first()
+    if not mapping:
+        raise HTTPException(status_code=404, detail="映射关系不存在")
+    
+    db.delete(mapping)
+    db.commit()
+    
+    return {"message": "删除成功"}
 
 
 # 智能导入相关接口

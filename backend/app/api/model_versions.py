@@ -9,6 +9,7 @@ from app.api.deps import get_db, get_current_user
 from app.models.user import User
 from app.models.model_version import ModelVersion
 from app.models.model_node import ModelNode
+from app.models.discipline_rule import DisciplineRule
 from app.schemas.model_version import (
     ModelVersionCreate,
     ModelVersionUpdate,
@@ -213,6 +214,9 @@ def create_model_version(
         
         # 复制节点结构
         _copy_nodes(db, base_version.id, db_version.id)
+        
+        # 复制学科规则
+        _copy_discipline_rules(db, base_version.id, db_version.id, hospital_id)
     
     return db_version
 
@@ -368,6 +372,31 @@ def _copy_node_recursive(db: Session, source_node: ModelNode, target_version_id:
     # 递归复制子节点
     for child in source_node.children:
         _copy_node_recursive(db, child, target_version_id, new_node.id)
+
+
+def _copy_discipline_rules(db: Session, source_version_id: int, target_version_id: int, hospital_id: int):
+    """复制学科规则"""
+    # 获取源版本的所有学科规则
+    source_rules = db.query(DisciplineRule).filter(
+        DisciplineRule.version_id == source_version_id,
+        DisciplineRule.hospital_id == hospital_id
+    ).all()
+    
+    # 复制每条规则
+    for rule in source_rules:
+        new_rule = DisciplineRule(
+            hospital_id=hospital_id,
+            version_id=target_version_id,
+            department_code=rule.department_code,
+            department_name=rule.department_name,
+            dimension_code=rule.dimension_code,
+            dimension_name=rule.dimension_name,
+            rule_description=rule.rule_description,
+            rule_coefficient=rule.rule_coefficient,
+        )
+        db.add(new_rule)
+    
+    db.commit()
 
 
 # ==================== 版本详情相关API（带路径参数）====================

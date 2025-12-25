@@ -304,9 +304,22 @@ const formatPercent = (value: number | string | null | undefined) => {
   return `${num.toFixed(2)}%`
 }
 
+// 判断是否为成本/指标维度（不支持下钻）
+const isCostDimension = (row: any) => {
+  const dimCode = row.dimension_code || ''
+  const dimName = row.dimension_name || ''
+  if (dimCode.includes('-cost')) return true
+  const costNames = ['人员经费', '不收费卫生材料费', '折旧（风险）费', '折旧风险费', '其他费用', '成本']
+  if (costNames.includes(dimName)) return true
+  return false
+}
+
 // 判断是否可以下钻
 const canDrillDown = (row: any) => {
-  return row.node_id && row.dimension_name
+  if (!row.node_id || !row.dimension_name) return false
+  // 指标维度（成本等）不支持下钻
+  if (isCostDimension(row)) return false
+  return true
 }
 
 // 处理下钻

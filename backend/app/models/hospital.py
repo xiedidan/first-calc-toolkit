@@ -37,3 +37,10 @@ class Hospital(Base):
     orientation_adjustment_details = relationship("OrientationAdjustmentDetail", back_populates="hospital")
     analysis_reports = relationship("AnalysisReport", back_populates="hospital")
     ai_prompt_configs = relationship("AIPromptConfig", back_populates="hospital")
+    discipline_rules = relationship("DisciplineRule", back_populates="hospital")
+    # 智能问数系统相关
+    ai_interfaces = relationship("AIInterface", back_populates="hospital")
+    ai_prompt_modules = relationship("AIPromptModule", back_populates="hospital")
+    conversation_groups = relationship("ConversationGroup", back_populates="hospital")
+    conversations = relationship("Conversation", back_populates="hospital")
+    metric_projects = relationship("MetricProject", back_populates="hospital")

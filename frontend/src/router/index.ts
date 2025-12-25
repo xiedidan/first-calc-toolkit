@@ -59,6 +59,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '成本基准管理' }
       },
       {
+        path: '/discipline-rules',
+        name: 'DisciplineRules',
+        component: () => import('@/views/DisciplineRules.vue'),
+        meta: { title: '学科规则管理' }
+      },
+      {
         path: '/model-versions',
         name: 'ModelVersions',
         component: () => import('@/views/ModelVersions.vue'),
@@ -179,6 +185,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '参考价值管理' }
       },
       {
+        path: '/cost-reports',
+        name: 'CostReports',
+        component: () => import('@/views/CostReports.vue'),
+        meta: { title: '成本报表管理' }
+      },
+      {
         path: '/report-view',
         name: 'ReportView',
         component: () => import('@/views/ReportView.vue'),
@@ -189,6 +201,18 @@ const routes: RouteRecordRaw[] = [
         name: 'ReportManagement',
         component: () => import('@/views/ReportManagement.vue'),
         meta: { title: '分析报告管理', requiresAdmin: true }
+      },
+      {
+        path: '/metric-assets',
+        name: 'MetricAssets',
+        component: () => import('@/views/MetricAssets.vue'),
+        meta: { title: '指标资产管理' }
+      },
+      {
+        path: '/smart-data-qa',
+        name: 'SmartDataQA',
+        component: () => import('@/views/SmartDataQA.vue'),
+        meta: { title: '智能数据问答' }
       }
     ]
   }

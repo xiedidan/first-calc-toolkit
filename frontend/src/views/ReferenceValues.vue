@@ -36,6 +36,7 @@
           <el-form-item>
             <el-button type="primary" @click="handleSearch">搜索</el-button>
             <el-button @click="resetSearch">重置</el-button>
+            <el-button type="danger" @click="handleClearFiltered">清除全部筛选记录</el-button>
           </el-form-item>
         </el-form>
       </div>
@@ -380,6 +381,8 @@ import {
   createReferenceValue,
   updateReferenceValue,
   deleteReferenceValue,
+  clearPeriodReferenceValues,
+  clearAllReferenceValues,
   importParse,
   importExtractValues,
   importPreview,
@@ -611,6 +614,49 @@ const handleDelete = async (row: ReferenceValue) => {
     if (error !== 'cancel') {
       ElMessage.error(error.response?.data?.detail || '删除失败')
     }
+  }
+}
+
+const handleClearFiltered = async () => {
+  // 根据筛选条件决定清除范围
+  const hasPeriodFilter = !!searchForm.period
+  const hasKeywordFilter = !!searchForm.keyword
+  
+  if (!hasPeriodFilter && !hasKeywordFilter) {
+    // 没有筛选条件，清除全部
+    try {
+      await ElMessageBox.confirm(
+        `确定要清除所有参考价值数据吗？此操作不可恢复！`,
+        '确认清除全部',
+        { type: 'warning' }
+      )
+      const res: any = await clearAllReferenceValues()
+      ElMessage.success(`已清除 ${res.deleted_count} 条记录`)
+      loadData()
+    } catch (error: any) {
+      if (error !== 'cancel') {
+        ElMessage.error(error.response?.data?.detail || '清除失败')
+      }
+    }
+  } else if (hasPeriodFilter && !hasKeywordFilter) {
+    // 只有年月筛选，清除该月份全部
+    try {
+      await ElMessageBox.confirm(
+        `确定要清除 ${searchForm.period} 的所有参考价值数据吗？此操作不可恢复！`,
+        '确认清除',
+        { type: 'warning' }
+      )
+      const res: any = await clearPeriodReferenceValues(searchForm.period)
+      ElMessage.success(`已清除 ${res.deleted_count} 条记录`)
+      loadData()
+    } catch (error: any) {
+      if (error !== 'cancel') {
+        ElMessage.error(error.response?.data?.detail || '清除失败')
+      }
+    }
+  } else {
+    // 有关键词筛选，提示不支持
+    ElMessage.warning('关键词筛选时不支持批量清除，请仅使用年月筛选或清除全部')
   }
 }
 

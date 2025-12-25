@@ -9,6 +9,33 @@
     @open="loadData"
   >
     <div v-loading="loading" class="report-edit-content">
+      <!-- 计算任务选择 -->
+      <div class="section">
+        <h3 class="section-title">计算任务</h3>
+        <el-form label-width="100px">
+          <el-form-item label="计算任务">
+            <el-select
+              v-model="formData.task_id"
+              placeholder="请选择计算任务"
+              filterable
+              clearable
+              style="width: 100%"
+              @change="handleTaskChange"
+            >
+              <el-option
+                v-for="task in availableTasks"
+                :key="task.task_id"
+                :label="formatTaskLabel(task)"
+                :value="task.task_id"
+              />
+            </el-select>
+            <div class="form-tip">
+              更改计算任务后，下方的价值分布和业务内涵数据将更新，请对应修改问题和计划的描述
+            </div>
+          </el-form-item>
+        </el-form>
+      </div>
+
       <!-- 科室主业价值分布（只读） -->
       <div class="section">
         <h3 class="section-title">科室主业价值分布（只读）</h3>
@@ -254,10 +281,14 @@ import {
   getBusinessContent,
   updateAnalysisReport,
   getDimensionDrillDown,
+  getAvailableTasks,
+  previewValueDistribution,
+  previewBusinessContent,
   type AnalysisReport,
   type ValueDistributionItem,
   type DimensionBusinessContent,
-  type DimensionDrillDownItem
+  type DimensionDrillDownItem,
+  type CalculationTaskBrief
 } from '@/api/analysis-reports'
 import { generateReportContent } from '@/api/ai-prompt-config'
 
@@ -310,10 +341,12 @@ const loading = ref(false)
 const saving = ref(false)
 const generatingIssues = ref(false)
 const generatingPlans = ref(false)
+const availableTasks = ref<CalculationTaskBrief[]>([])
 const valueDistribution = ref<ValueDistributionItem[]>([])
 const valueDistributionMessage = ref<string | null>(null)
 const businessContentDimensions = ref<DimensionBusinessContent[]>([])
 const businessContentMessage = ref<string | null>(null)
+const originalTaskId = ref<string | null>(null) // 记录原始任务ID
 
 // 下钻相关
 const drillDownVisible = ref(false)
@@ -342,9 +375,22 @@ const resetDrillDownPagination = () => {
   drillDownPageSize.value = 10
 }
 
+// 判断是否为成本/指标维度（不支持下钻）
+const isCostDimension = (row: any) => {
+  const dimCode = row.dimension_code || ''
+  const dimName = row.dimension_name || ''
+  if (dimCode.includes('-cost')) return true
+  const costNames = ['人员经费', '不收费卫生材料费', '折旧（风险）费', '折旧风险费', '其他费用', '成本']
+  if (costNames.includes(dimName)) return true
+  return false
+}
+
 // 判断是否可以下钻
 const canDrillDown = (row: any) => {
-  return row.node_id && row.dimension_name
+  if (!row.node_id || !row.dimension_name) return false
+  // 指标维度（成本等）不支持下钻
+  if (isCostDimension(row)) return false
+  return true
 }
 
 // 处理下钻
@@ -368,9 +414,67 @@ const handleDrillDown = async (row: any) => {
 
 // 表单数据
 const formData = reactive({
+  task_id: '' as string,
   current_issues: '',
   future_plans: ''
 })
+
+// 格式化任务选择器标签
+const formatTaskLabel = (task: CalculationTaskBrief) => {
+  const taskIdShort = task.task_id.substring(0, 8) + '...'
+  const workflowName = task.workflow_name || '默认流程'
+  return `${taskIdShort} (${task.period} - ${workflowName})`
+}
+
+// 当计算任务变化时
+const handleTaskChange = async () => {
+  if (!props.report) return
+  
+  // 如果任务ID变化了，提示用户
+  if (formData.task_id !== originalTaskId.value) {
+    ElMessage.warning('计算任务已更改，请检查并更新问题和计划的描述')
+  }
+  
+  // 重新加载预览数据
+  await loadPreviewData()
+}
+
+// 加载预览数据（基于当前选择的任务）
+const loadPreviewData = async () => {
+  if (!props.report) return
+  
+  loading.value = true
+  try {
+    if (formData.task_id) {
+      // 使用预览 API 加载数据
+      const task = availableTasks.value.find(t => t.task_id === formData.task_id)
+      const period = task?.period || props.report.period
+      
+      const [valueRes, contentRes] = await Promise.all([
+        previewValueDistribution(props.report.department_id, period, formData.task_id),
+        previewBusinessContent(props.report.department_id, period, formData.task_id)
+      ])
+      
+      valueDistribution.value = valueRes.items || []
+      valueDistributionMessage.value = valueRes.message
+      
+      businessContentDimensions.value = contentRes.dimensions || []
+      businessContentMessage.value = contentRes.message
+    } else {
+      // 没有选择任务，清空数据
+      valueDistribution.value = []
+      valueDistributionMessage.value = '请选择计算任务'
+      businessContentDimensions.value = []
+      businessContentMessage.value = '请选择计算任务'
+    }
+  } catch (error: any) {
+    console.error('加载预览数据失败:', error)
+    valueDistributionMessage.value = '加载价值分布数据失败'
+    businessContentMessage.value = '加载业务内涵数据失败'
+  } finally {
+    loading.value = false
+  }
+}
 
 // 验证错误
 const currentIssuesError = ref('')
@@ -403,24 +507,47 @@ const loadData = async () => {
   if (!props.report) return
   
   // 初始化表单数据
+  formData.task_id = props.report.task_id || ''
   formData.current_issues = props.report.current_issues || ''
   formData.future_plans = props.report.future_plans || ''
+  originalTaskId.value = props.report.task_id || null
   currentIssuesError.value = ''
   futurePlansError.value = ''
   
   loading.value = true
   try {
-    // 并行加载价值分布和业务内涵
-    const [valueRes, contentRes] = await Promise.all([
-      getValueDistribution(props.report.id),
-      getBusinessContent(props.report.id)
-    ])
+    // 先加载可用的计算任务列表
+    const tasksRes = await getAvailableTasks({ status: 'completed' })
+    availableTasks.value = tasksRes
     
-    valueDistribution.value = valueRes.items || []
-    valueDistributionMessage.value = valueRes.message
-    
-    businessContentDimensions.value = contentRes.dimensions || []
-    businessContentMessage.value = contentRes.message
+    // 然后加载价值分布和业务内涵
+    if (formData.task_id) {
+      const task = availableTasks.value.find(t => t.task_id === formData.task_id)
+      const period = task?.period || props.report.period
+      
+      const [valueRes, contentRes] = await Promise.all([
+        previewValueDistribution(props.report.department_id, period, formData.task_id),
+        previewBusinessContent(props.report.department_id, period, formData.task_id)
+      ])
+      
+      valueDistribution.value = valueRes.items || []
+      valueDistributionMessage.value = valueRes.message
+      
+      businessContentDimensions.value = contentRes.dimensions || []
+      businessContentMessage.value = contentRes.message
+    } else {
+      // 没有关联任务，尝试使用报告 ID 加载
+      const [valueRes, contentRes] = await Promise.all([
+        getValueDistribution(props.report.id),
+        getBusinessContent(props.report.id)
+      ])
+      
+      valueDistribution.value = valueRes.items || []
+      valueDistributionMessage.value = valueRes.message
+      
+      businessContentDimensions.value = contentRes.dimensions || []
+      businessContentMessage.value = contentRes.message
+    }
   } catch (error: any) {
     ElMessage.error(error.response?.data?.detail || '加载报告数据失败')
   } finally {
@@ -526,6 +653,7 @@ const handleSave = async () => {
   saving.value = true
   try {
     await updateAnalysisReport(props.report.id, {
+      task_id: formData.task_id || null,
       current_issues: formData.current_issues || null,
       future_plans: formData.future_plans || null
     })
@@ -554,8 +682,11 @@ watch(() => props.report, () => {
   valueDistributionMessage.value = null
   businessContentDimensions.value = []
   businessContentMessage.value = null
+  availableTasks.value = []
+  formData.task_id = ''
   formData.current_issues = ''
   formData.future_plans = ''
+  originalTaskId.value = null
 })
 </script>
 
@@ -593,6 +724,12 @@ watch(() => props.report, () => {
 
 .char-count.over-limit {
   color: #f56c6c;
+}
+
+.form-tip {
+  margin-top: 4px;
+  color: #e6a23c;
+  font-size: 12px;
 }
 
 .data-message {

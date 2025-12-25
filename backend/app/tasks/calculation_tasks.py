@@ -56,7 +56,7 @@ def execute_calculation_task(
         
         # 更新为运行中
         task.status = "running"
-        task.started_at = datetime.now()
+        task.started_at = datetime.utcnow()
         db.commit()
         print(f"[INFO] 任务 {task_id} 开始执行")
         print(f"[INFO] 参数: model_version_id={model_version_id}, workflow_id={workflow_id}, period={period}")
@@ -67,7 +67,7 @@ def execute_calculation_task(
         if not model_version:
             task.status = "failed"
             task.error_message = "模型版本不存在"
-            task.completed_at = datetime.now()
+            task.completed_at = datetime.utcnow()
             db.commit()
             return {"success": False, "error": "模型版本不存在"}
         
@@ -85,7 +85,7 @@ def execute_calculation_task(
             if not departments:
                 task.status = "failed"
                 task.error_message = "没有需要计算的科室"
-                task.completed_at = datetime.now()
+                task.completed_at = datetime.utcnow()
                 db.commit()
                 return {"success": False, "error": "没有需要计算的科室"}
         else:
@@ -104,7 +104,7 @@ def execute_calculation_task(
             if not workflow:
                 task.status = "failed"
                 task.error_message = "计算流程不存在"
-                task.completed_at = datetime.now()
+                task.completed_at = datetime.utcnow()
                 db.commit()
                 return {"success": False, "error": "计算流程不存在"}
             
@@ -169,7 +169,7 @@ def execute_calculation_task(
                     task = db.query(CalculationTask).filter(CalculationTask.task_id == task_id).first()
                     task.status = "failed"
                     task.error_message = failed_error
-                    task.completed_at = datetime.now()
+                    task.completed_at = datetime.utcnow()
                     db.commit()
                     print(f"任务 {task_id} 状态已更新为失败")
                 except Exception as update_error:
@@ -180,7 +180,7 @@ def execute_calculation_task(
             # TODO: 实现兼容模式
             task.status = "failed"
             task.error_message = "请指定计算流程ID"
-            task.completed_at = datetime.now()
+            task.completed_at = datetime.utcnow()
             db.commit()
             return {"success": False, "error": "请指定计算流程ID"}
         
@@ -193,7 +193,7 @@ def execute_calculation_task(
         print(f"任务 {task_id} 执行完成，更新状态")
         task.status = "completed"
         task.progress = Decimal("100.00")
-        task.completed_at = datetime.now()
+        task.completed_at = datetime.utcnow()
         db.commit()
         print(f"任务 {task_id} 状态已更新为完成")
         
@@ -210,7 +210,7 @@ def execute_calculation_task(
             if task and task.status != "failed":  # 避免覆盖已经设置的失败状态
                 task.status = "failed"
                 task.error_message = error_msg
-                task.completed_at = datetime.now()
+                task.completed_at = datetime.utcnow()
                 db.commit()
                 print(f"任务 {task_id} 超时状态已更新")
         except Exception as commit_error:
@@ -233,7 +233,7 @@ def execute_calculation_task(
             if task and task.status != "failed":  # 避免覆盖已经设置的失败状态
                 task.status = "failed"
                 task.error_message = error_msg
-                task.completed_at = datetime.now()
+                task.completed_at = datetime.utcnow()
                 db.commit()
                 print(f"任务 {task_id} 失败状态已更新")
         except Exception as commit_error:
@@ -270,7 +270,7 @@ def execute_calculation_step(
         model_version_id: 模型版本ID
         hospital_id: 医疗机构ID
     """
-    start_time = datetime.now()
+    start_time = datetime.utcnow()
     
     try:
         # 替换占位符
@@ -415,7 +415,7 @@ def execute_calculation_step(
             raise ValueError(f"不支持的代码类型: {step.code_type}")
         
         # 记录步骤日志
-        end_time = datetime.now()
+        end_time = datetime.utcnow()
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
         
         # 生成执行信息
@@ -450,7 +450,7 @@ def execute_calculation_step(
         
     except Exception as e:
         # 记录错误日志
-        end_time = datetime.now()
+        end_time = datetime.utcnow()
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
         
         error_msg = str(e)

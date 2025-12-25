@@ -17,6 +17,7 @@ from app.schemas.ai_prompt_config import (
     AIPromptCategoryInfo,
     ReportAIGenerateRequest,
     ReportAIGenerateResponse,
+    ReportAIPreviewGenerateRequest,
 )
 from app.services.ai_report_service import AIReportService
 from app.models.role import RoleType
@@ -70,6 +71,38 @@ def generate_report_content(
         db=db,
         hospital_id=hospital_id,
         report_id=request.report_id,
+        category=request.category,
+    )
+    
+    return {
+        "code": 200,
+        "message": "生成完成" if result["success"] else "生成失败",
+        "data": result,
+    }
+
+
+@router.post("/generate/preview", response_model=dict)
+def generate_report_content_preview(
+    request: ReportAIPreviewGenerateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    使用AI生成报告内容（预览模式，用于创建报告时）
+    
+    - department_id: 科室ID
+    - period: 统计周期
+    - task_id: 计算任务ID
+    - category: report_issues（当前存在问题）或 report_plans（未来发展计划）
+    """
+    hospital_id = require_hospital_id()
+    
+    result = AIReportService.generate_report_content_preview(
+        db=db,
+        hospital_id=hospital_id,
+        department_id=request.department_id,
+        period=request.period,
+        task_id=request.task_id,
         category=request.category,
     )
     

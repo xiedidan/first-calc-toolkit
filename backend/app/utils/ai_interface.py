@@ -187,6 +187,8 @@ def _call_openai_compatible_api(
         AIRateLimitError: 达到限流
     """
     # 构建完整的 API URL
+    # api_endpoint 应只包含基础路径（如 https://api.deepseek.com/v1）
+    # 代码会自动追加 /chat/completions
     url = f"{api_endpoint.rstrip('/')}/chat/completions"
     
     # 请求头
@@ -559,6 +561,42 @@ def _parse_ai_response(
         raise AIResponseError(f"解析AI响应失败: {str(e)}")
 
 
+def _clean_ai_text_response(content: str) -> str:
+    """
+    清理AI文本响应中的包装标记
+    
+    处理以下情况：
+    1. <think>...</think> 标签（DeepSeek R1 模型）
+    2. ```markdown ... ``` 代码块包裹
+    3. ``` ... ``` 代码块包裹（无语言标识）
+    
+    Args:
+        content: 原始AI响应内容
+        
+    Returns:
+        清理后的内容
+    """
+    import re
+    
+    if not content:
+        return content
+    
+    # 1. 移除 <think>...</think> 标签
+    if "<think>" in content and "</think>" in content:
+        content = re.sub(r'<think>.*?</think>\s*', '', content, flags=re.DOTALL).strip()
+    
+    # 2. 移除 Markdown 代码块包裹
+    # 匹配 ```markdown 或 ```md 或 ``` 开头，``` 结尾的情况
+    # 使用非贪婪匹配，处理整个内容被包裹的情况
+    markdown_block_pattern = r'^```(?:markdown|md)?\s*\n?(.*?)\n?```\s*$'
+    match = re.match(markdown_block_pattern, content.strip(), re.DOTALL | re.IGNORECASE)
+    if match:
+        content = match.group(1).strip()
+        logger.info("已移除AI响应中的Markdown代码块包裹")
+    
+    return content
+
+
 def call_ai_text_generation(
     api_endpoint: str,
     api_key: str,
@@ -616,11 +654,8 @@ def call_ai_text_generation(
     if not content:
         raise AIResponseError("AI响应内容为空")
     
-    # DeepSeek R1 模型可能返回带有 <think> 标签的内容，需要清理
-    if "<think>" in content and "</think>" in content:
-        import re
-        # 移除 <think>...</think> 部分，只保留实际内容
-        content = re.sub(r'<think>.*?</think>\s*', '', content, flags=re.DOTALL).strip()
+    # 清理AI响应中的包装标记（<think>标签、Markdown代码块等）
+    content = _clean_ai_text_response(content)
     
     logger.info(f"AI文本生成成功: 内容长度={len(content)}")
     return content

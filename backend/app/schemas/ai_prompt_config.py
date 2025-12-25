@@ -58,6 +58,14 @@ class ReportAIGenerateRequest(BaseModel):
     category: str = Field(..., description="生成类型：report_issues 或 report_plans")
 
 
+class ReportAIPreviewGenerateRequest(BaseModel):
+    """报告AI预览生成请求（创建报告时使用）"""
+    department_id: int = Field(..., description="科室ID")
+    period: str = Field(..., description="统计周期，格式：YYYY-MM")
+    task_id: str = Field(..., description="计算任务ID")
+    category: str = Field(..., description="生成类型：report_issues 或 report_plans")
+
+
 class ReportAIGenerateResponse(BaseModel):
     """报告AI生成响应"""
     success: bool = Field(..., description="是否成功")

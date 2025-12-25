@@ -37,6 +37,12 @@ class AnalysisReport(Base):
         nullable=True, 
         comment="创建人ID"
     )
+    task_id = Column(
+        String(100),
+        nullable=True,
+        index=True,
+        comment="关联的计算任务ID，用于获取计算结果数据"
+    )
 
     # 唯一约束：同一医疗机构、同一科室、同一年月只能有一条报告
     __table_args__ = (

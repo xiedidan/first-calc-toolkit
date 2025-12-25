@@ -11,6 +11,7 @@ class AnalysisReportBase(BaseModel):
     """分析报告基础Schema"""
     department_id: int = Field(..., description="科室ID")
     period: str = Field(..., description="年月 (YYYY-MM格式)")
+    task_id: Optional[str] = Field(None, description="关联的计算任务ID")
     current_issues: Optional[str] = Field(None, max_length=2000, description="当前存在问题 (Markdown格式，最大2000字符)")
     future_plans: Optional[str] = Field(None, max_length=2000, description="未来发展计划 (Markdown格式，最大2000字符)")
 
@@ -39,6 +40,7 @@ class AnalysisReportCreate(AnalysisReportBase):
 
 class AnalysisReportUpdate(BaseModel):
     """更新分析报告Schema"""
+    task_id: Optional[str] = Field(None, description="关联的计算任务ID")
     current_issues: Optional[str] = Field(None, max_length=2000, description="当前存在问题 (Markdown格式，最大2000字符)")
     future_plans: Optional[str] = Field(None, max_length=2000, description="未来发展计划 (Markdown格式，最大2000字符)")
 
@@ -57,6 +59,8 @@ class AnalysisReport(AnalysisReportBase):
     hospital_id: int
     department_code: str = Field(..., description="科室代码")
     department_name: str = Field(..., description="科室名称")
+    task_id: Optional[str] = Field(None, description="关联的计算任务ID")
+    workflow_name: Optional[str] = Field(None, description="计算流程名称")
     created_at: datetime
     updated_at: datetime
     created_by: Optional[int] = None

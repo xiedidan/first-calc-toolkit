@@ -126,6 +126,90 @@ from .ai_prompt_config import (
     ReportAIGenerateRequest,
     ReportAIGenerateResponse,
 )
+from .cost_report import (
+    CostReport,
+    CostReportCreate,
+    CostReportUpdate,
+    CostReportList,
+)
+from .ai_interface import (
+    AIInterfaceCreate,
+    AIInterfaceUpdate,
+    AIInterfaceResponse,
+    AIInterfaceListResponse,
+    AIInterfaceTestRequest,
+    AIInterfaceTestResponse,
+)
+from .ai_prompt_module import (
+    AIPromptModuleUpdate,
+    AIPromptModuleResponse,
+    AIPromptModuleListResponse,
+)
+from .metric_project import (
+    MetricProjectCreate,
+    MetricProjectUpdate,
+    MetricProjectResponse,
+    MetricProjectListResponse,
+    MetricProjectReorderRequest,
+)
+from .metric_topic import (
+    MetricTopicCreate,
+    MetricTopicUpdate,
+    MetricTopicResponse,
+    MetricTopicListResponse,
+    MetricTopicReorderRequest,
+)
+from .metric import (
+    MetricCreate,
+    MetricUpdate,
+    MetricResponse,
+    MetricListResponse,
+    MetricTreeNodeResponse,
+    MetricTreeResponse,
+    MetricSearchRequest,
+)
+from .metric_relation import (
+    MetricRelationCreate,
+    MetricRelationResponse,
+    MetricRelationListResponse,
+    AffectedMetricResponse,
+    AffectedMetricsResponse,
+)
+from .conversation import (
+    ConversationCreate,
+    ConversationUpdate,
+    ConversationResponse,
+    ConversationListResponse,
+    ConversationSearchRequest,
+    ConversationMoveRequest,
+    CONVERSATION_TYPES,
+    CONVERSATION_TYPE_DISPLAY,
+)
+from .conversation_group import (
+    ConversationGroupCreate,
+    ConversationGroupUpdate,
+    ConversationGroupResponse,
+    ConversationGroupListResponse,
+    ConversationGroupReorderRequest,
+    ConversationGroupWithConversationsResponse,
+    ConversationBriefResponse,
+    SidebarResponse,
+)
+from .conversation_message import (
+    ConversationMessageCreate,
+    ConversationMessageResponse,
+    ConversationMessageListResponse,
+    ConversationDetailResponse,
+    SendMessageRequest,
+    SendMessageResponse,
+    MessageExportRequest,
+    ChartConfig,
+    TableData,
+    CodeBlock,
+    MESSAGE_ROLES,
+    CONTENT_TYPES,
+    CONTENT_TYPE_DISPLAY,
+)
 
 __all__ = [
     "User",
@@ -229,4 +313,76 @@ __all__ = [
     "AIPromptCategoriesResponse",
     "ReportAIGenerateRequest",
     "ReportAIGenerateResponse",
+    "CostReport",
+    "CostReportCreate",
+    "CostReportUpdate",
+    "CostReportList",
+    "AIInterfaceCreate",
+    "AIInterfaceUpdate",
+    "AIInterfaceResponse",
+    "AIInterfaceListResponse",
+    "AIInterfaceTestRequest",
+    "AIInterfaceTestResponse",
+    # AI提示词模块
+    "AIPromptModuleUpdate",
+    "AIPromptModuleResponse",
+    "AIPromptModuleListResponse",
+    # 指标项目
+    "MetricProjectCreate",
+    "MetricProjectUpdate",
+    "MetricProjectResponse",
+    "MetricProjectListResponse",
+    "MetricProjectReorderRequest",
+    # 指标主题
+    "MetricTopicCreate",
+    "MetricTopicUpdate",
+    "MetricTopicResponse",
+    "MetricTopicListResponse",
+    "MetricTopicReorderRequest",
+    # 指标
+    "MetricCreate",
+    "MetricUpdate",
+    "MetricResponse",
+    "MetricListResponse",
+    "MetricTreeNodeResponse",
+    "MetricTreeResponse",
+    "MetricSearchRequest",
+    # 指标关联
+    "MetricRelationCreate",
+    "MetricRelationResponse",
+    "MetricRelationListResponse",
+    "AffectedMetricResponse",
+    "AffectedMetricsResponse",
+    # 对话
+    "ConversationCreate",
+    "ConversationUpdate",
+    "ConversationResponse",
+    "ConversationListResponse",
+    "ConversationSearchRequest",
+    "ConversationMoveRequest",
+    "CONVERSATION_TYPES",
+    "CONVERSATION_TYPE_DISPLAY",
+    # 对话分组
+    "ConversationGroupCreate",
+    "ConversationGroupUpdate",
+    "ConversationGroupResponse",
+    "ConversationGroupListResponse",
+    "ConversationGroupReorderRequest",
+    "ConversationGroupWithConversationsResponse",
+    "ConversationBriefResponse",
+    "SidebarResponse",
+    # 对话消息
+    "ConversationMessageCreate",
+    "ConversationMessageResponse",
+    "ConversationMessageListResponse",
+    "ConversationDetailResponse",
+    "SendMessageRequest",
+    "SendMessageResponse",
+    "MessageExportRequest",
+    "ChartConfig",
+    "TableData",
+    "CodeBlock",
+    "MESSAGE_ROLES",
+    "CONTENT_TYPES",
+    "CONTENT_TYPE_DISPLAY",
 ]

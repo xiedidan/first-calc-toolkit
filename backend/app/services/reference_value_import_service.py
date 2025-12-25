@@ -217,20 +217,27 @@ class ReferenceValueImportService:
     
     @classmethod
     def _get_system_departments(cls, db: Session, hospital_id: int) -> List[Dict[str, Any]]:
-        """获取系统科室列表"""
+        """获取系统科室列表（使用核算单元代码和名称）"""
         departments = db.query(Department).filter(
             Department.hospital_id == hospital_id
         ).all()
         
-        return [
-            {
-                "id": dept.id,
-                "code": dept.his_code,
-                "name": dept.his_name,
-                "score": 1.0
-            }
-            for dept in departments
-        ]
+        result = []
+        for dept in departments:
+            # 优先使用核算单元代码和名称，如果没有则使用HIS代码和名称
+            code = dept.accounting_unit_code or dept.his_code
+            name = dept.accounting_unit_name or dept.his_name
+            if code and name:  # 确保代码和名称都存在
+                result.append({
+                    "id": dept.id,
+                    "code": code,
+                    "name": name,
+                    "his_code": dept.his_code,  # 保留HIS代码用于存储
+                    "his_name": dept.his_name,  # 保留HIS名称用于存储
+                    "score": 1.0
+                })
+        
+        return result
     
     @classmethod
     def _suggest_departments(
@@ -324,9 +331,25 @@ class ReferenceValueImportService:
         nurse_col = get_col_idx("nurse_reference_value")
         tech_col = get_col_idx("tech_reference_value")
         
-        # 获取系统科室
-        all_departments_by_code = {dept.his_code: dept for dept in db.query(Department).filter(Department.hospital_id == hospital_id).all()}
-        all_departments_by_name = {dept.his_name: dept for dept in db.query(Department).filter(Department.hospital_id == hospital_id).all()}
+        # 获取系统科室（使用核算单元代码和名称进行匹配）
+        all_departments = db.query(Department).filter(Department.hospital_id == hospital_id).all()
+        
+        # 按核算单元代码索引（优先）和HIS代码索引（备用）
+        all_departments_by_code = {}
+        all_departments_by_name = {}
+        for dept in all_departments:
+            # 核算单元代码优先
+            if dept.accounting_unit_code:
+                all_departments_by_code[dept.accounting_unit_code] = dept
+            # HIS代码作为备用
+            if dept.his_code:
+                all_departments_by_code.setdefault(dept.his_code, dept)
+            # 核算单元名称优先
+            if dept.accounting_unit_name:
+                all_departments_by_name[dept.accounting_unit_name] = dept
+            # HIS名称作为备用
+            if dept.his_name:
+                all_departments_by_name.setdefault(dept.his_name, dept)
         
         # 获取已存在的参考价值
         existing_refs = {}
@@ -398,8 +421,9 @@ class ReferenceValueImportService:
                 dept_name = excel_dept_name
                 statistics["error_count"] += 1
             else:
-                dept_code = department.his_code
-                dept_name = department.his_name
+                # 使用核算单元代码和名称（如果有），否则使用HIS代码和名称
+                dept_code = department.accounting_unit_code or department.his_code
+                dept_name = department.accounting_unit_name or department.his_name
                 
                 if (period, dept_code) in existing_refs:
                     status = "update"
@@ -423,11 +447,47 @@ class ReferenceValueImportService:
                 "message": message
             })
         
-        cls._sessions[session_id]["preview_items"] = preview_items
+        # 按 (period, department_code) 合并，数值累加
+        merged_items = {}
+        for item in preview_items:
+            key = (item["period"], item["department_code"])
+            if key in merged_items:
+                # 累加数值
+                existing = merged_items[key]
+                existing["reference_value"] = (existing["reference_value"] or Decimal(0)) + (item["reference_value"] or Decimal(0))
+                if item["doctor_reference_value"] is not None:
+                    existing["doctor_reference_value"] = (existing["doctor_reference_value"] or Decimal(0)) + item["doctor_reference_value"]
+                if item["nurse_reference_value"] is not None:
+                    existing["nurse_reference_value"] = (existing["nurse_reference_value"] or Decimal(0)) + item["nurse_reference_value"]
+                if item["tech_reference_value"] is not None:
+                    existing["tech_reference_value"] = (existing["tech_reference_value"] or Decimal(0)) + item["tech_reference_value"]
+                # 更新消息提示合并了多少条
+                merge_count = existing.get("_merge_count", 1) + 1
+                existing["_merge_count"] = merge_count
+                existing["message"] = f"合并了 {merge_count} 条记录" + (", 将覆盖已有数据" if existing["status"] == "update" else "")
+            else:
+                merged_items[key] = item.copy()
+                merged_items[key]["_merge_count"] = 1
+        
+        # 移除内部计数字段，重新计算统计
+        final_items = []
+        final_statistics = {"total": 0, "new_count": 0, "update_count": 0, "error_count": 0}
+        for item in merged_items.values():
+            item.pop("_merge_count", None)
+            final_items.append(item)
+            final_statistics["total"] += 1
+            if item["status"] == "new":
+                final_statistics["new_count"] += 1
+            elif item["status"] == "update":
+                final_statistics["update_count"] += 1
+            elif item["status"] == "error":
+                final_statistics["error_count"] += 1
+        
+        cls._sessions[session_id]["preview_items"] = final_items
         
         return {
-            "preview_items": preview_items,
-            "statistics": statistics
+            "preview_items": final_items,
+            "statistics": final_statistics
         }
     
     @classmethod

@@ -38,6 +38,18 @@ from .orientation_adjustment_detail import OrientationAdjustmentDetail
 from .reference_value import ReferenceValue
 from .analysis_report import AnalysisReport
 from .ai_prompt_config import AIPromptConfig, AIPromptCategory
+from .cost_report import CostReport
+from .discipline_rule import DisciplineRule
+# 智能问数系统模型
+from .ai_interface import AIInterface
+from .ai_prompt_module import AIPromptModule, PromptModuleCode
+from .conversation_group import ConversationGroup
+from .conversation import Conversation, ConversationType
+from .conversation_message import ConversationMessage, MessageRole, ContentType
+from .metric_project import MetricProject
+from .metric_topic import MetricTopic
+from .metric import Metric, MetricType
+from .metric_relation import MetricRelation, RelationType
 
 __all__ = [
     "User",
@@ -85,4 +97,22 @@ __all__ = [
     "AnalysisReport",
     "AIPromptConfig",
     "AIPromptCategory",
+    "CostReport",
+    "DisciplineRule",
+    # 智能问数系统
+    "AIInterface",
+    "AIPromptModule",
+    "PromptModuleCode",
+    "ConversationGroup",
+    "Conversation",
+    "ConversationType",
+    "ConversationMessage",
+    "MessageRole",
+    "ContentType",
+    "MetricProject",
+    "MetricTopic",
+    "Metric",
+    "MetricType",
+    "MetricRelation",
+    "RelationType",
 ]

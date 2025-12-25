@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime
 
 from app.api.deps import get_db, get_current_user
+from app.utils.timezone import utc_now
 from app.models.user import User
 from app.models.calculation_task import CalculationTask, CalculationResult, CalculationSummary
 from app.models.department import Department
@@ -107,7 +108,8 @@ def _get_latest_completed_task(
         if active_version:
             query = query.filter(CalculationTask.model_version_id == active_version.id)
     
-    task = query.order_by(CalculationTask.completed_at.desc()).first()
+    # 使用自增ID排序，比时间戳更稳定
+    task = query.order_by(CalculationTask.id.desc()).first()
     if not task:
         raise HTTPException(status_code=404, detail="未找到计算结果")
     
@@ -152,7 +154,7 @@ def create_calculation_task(
         status="pending",
         description=task_data.description,
         created_by=current_user.id,
-        created_at=datetime.now()
+        created_at=datetime.utcnow()
     )
     db.add(db_task)
     db.commit()
@@ -231,8 +233,8 @@ def get_calculation_tasks(
     # 总数
     total = query.count()
     
-    # 分页
-    tasks = query.order_by(CalculationTask.created_at.desc()).offset((page - 1) * size).limit(size).all()
+    # 分页（使用自增ID排序，比时间戳更稳定）
+    tasks = query.order_by(CalculationTask.id.desc()).offset((page - 1) * size).limit(size).all()
     
     # 加载关联的workflow_name
     for task in tasks:
@@ -272,7 +274,7 @@ def cancel_calculation_task(
     
     # 更新任务状态
     task.status = "cancelled"
-    task.completed_at = datetime.now()
+    task.completed_at = datetime.utcnow()
     db.commit()
     
     # TODO: 实际取消Celery任务
@@ -1141,32 +1143,45 @@ def get_task_logs(
 
 @router.get("/results/export/summary")
 def export_summary(
-    period: str = Query(..., description="评估月份(YYYY-MM)"),
+    task_id: Optional[str] = Query(None, description="计算任务ID（优先使用）"),
+    period: Optional[str] = Query(None, description="评估月份(YYYY-MM)"),
     model_version_id: Optional[int] = Query(None, description="模型版本ID"),
+    mom_task_id: Optional[str] = Query(None, description="环比任务ID"),
+    yoy_task_id: Optional[str] = Query(None, description="同比任务ID"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """导出汇总表（同步）- 显示所有参与核算的科室"""
+    """导出汇总表（同步）- 按核算单元分组，与页面显示一致，包含参考值、环比、同比数据"""
     from fastapi.responses import StreamingResponse
     from app.services.export_service import ExportService
     from app.utils.hospital_filter import get_current_hospital_id_or_raise
-    
-    # 获取汇总数据（复用现有逻辑）
+    from app.models.reference_value import ReferenceValue
     from decimal import Decimal
     from collections import defaultdict
     
     # 获取当前医疗机构ID
     hospital_id = get_current_hospital_id_or_raise()
     
-    # 查找最新的完成任务（使用辅助函数）
-    task = _get_latest_completed_task(db, period, model_version_id)
+    # 优先使用task_id，否则按period和model_version_id查找
+    if task_id:
+        task = db.query(CalculationTask).filter(
+            CalculationTask.task_id == task_id,
+            CalculationTask.status == "completed"
+        ).first()
+        if not task:
+            raise HTTPException(status_code=404, detail=f"未找到任务: {task_id}")
+        period = task.period
+    else:
+        if not period:
+            raise HTTPException(status_code=400, detail="请提供task_id或period参数")
+        # 查找最新的完成任务（使用辅助函数）
+        task = _get_latest_completed_task(db, period, model_version_id)
     
     # 获取所有参与核算的科室（is_active=True）
     all_active_depts = db.query(Department).filter(
         Department.hospital_id == hospital_id,
         Department.is_active == True
     ).order_by(Department.sort_order, Department.id).all()
-    dept_map = {d.id: d for d in all_active_depts}
     
     # 查询所有计算结果
     all_results = db.query(CalculationResult).filter(
@@ -1197,11 +1212,61 @@ def export_summary(
         
         return total_value
     
-    # 计算每个科室的汇总数据（遍历所有参与核算的科室）
-    departments_data = []
-    total_doctor_value = Decimal('0')
-    total_nurse_value = Decimal('0')
-    total_tech_value = Decimal('0')
+    # 辅助函数：获取任务的汇总数据（按科室代码索引）
+    def get_task_summary_by_dept_code(task_id_param):
+        """获取指定任务的汇总数据，返回按科室代码索引的字典"""
+        if not task_id_param:
+            return {}
+        
+        compare_results = db.query(CalculationResult).filter(
+            CalculationResult.task_id == task_id_param
+        ).all()
+        
+        if not compare_results:
+            return {}
+        
+        # 按科室分组
+        compare_by_dept = defaultdict(list)
+        for result in compare_results:
+            compare_by_dept[result.department_id].append(result)
+        
+        # 按核算单元汇总
+        compare_units = {}
+        for dept in all_active_depts:
+            dept_id_val = dept.id
+            results = compare_by_dept.get(dept_id_val, [])
+            
+            sequences = [r for r in results if r.node_type == "sequence"]
+            total_val = Decimal('0')
+            
+            for seq in sequences:
+                seq_value = calculate_sum_from_children(seq.node_id, results)
+                total_val += seq_value
+            
+            unit_code = dept.accounting_unit_code or dept.his_code
+            if unit_code not in compare_units:
+                compare_units[unit_code] = Decimal('0')
+            compare_units[unit_code] += total_val
+        
+        return compare_units
+    
+    # 获取参考值数据（按科室代码索引）
+    reference_values = {}
+    ref_records = db.query(ReferenceValue).filter(
+        ReferenceValue.hospital_id == hospital_id,
+        ReferenceValue.period == period
+    ).all()
+    for ref in ref_records:
+        reference_values[ref.department_code] = ref.reference_value
+    
+    # 获取环比数据
+    mom_summary = get_task_summary_by_dept_code(mom_task_id)
+    
+    # 获取同比数据
+    yoy_summary = get_task_summary_by_dept_code(yoy_task_id)
+    
+    # 按核算单元分组汇总（与页面显示逻辑一致）
+    accounting_units = {}  # key: (accounting_unit_code, accounting_unit_name), value: {dept_ids, values}
     
     for dept in all_active_depts:
         dept_id_val = dept.id
@@ -1227,6 +1292,45 @@ def export_summary(
                  "tech" in node_name_lower or "technician" in node_name_lower:
                 tech_value += seq_value
         
+        # 确定核算单元标识（使用accounting_unit_code和accounting_unit_name，如果没有则使用科室自己的信息）
+        unit_code = dept.accounting_unit_code or dept.his_code
+        unit_name = dept.accounting_unit_name or dept.his_name
+        unit_key = (unit_code, unit_name)
+        
+        # 累加到核算单元
+        if unit_key not in accounting_units:
+            accounting_units[unit_key] = {
+                'dept_ids': [],
+                'doctor_value': Decimal('0'),
+                'nurse_value': Decimal('0'),
+                'tech_value': Decimal('0'),
+                'sort_order': dept.sort_order
+            }
+        
+        accounting_units[unit_key]['dept_ids'].append(dept_id_val)
+        accounting_units[unit_key]['doctor_value'] += doctor_value
+        accounting_units[unit_key]['nurse_value'] += nurse_value
+        accounting_units[unit_key]['tech_value'] += tech_value
+    
+    # 生成汇总数据（按核算单元）
+    departments_data = []
+    total_doctor_value = Decimal('0')
+    total_nurse_value = Decimal('0')
+    total_tech_value = Decimal('0')
+    total_reference_value = Decimal('0')
+    total_mom_value = Decimal('0')
+    total_yoy_value = Decimal('0')
+    has_reference = False
+    has_mom = False
+    has_yoy = False
+    
+    # 按sort_order排序
+    sorted_units = sorted(accounting_units.items(), key=lambda x: x[1]['sort_order'])
+    
+    for (unit_code, unit_name), unit_data in sorted_units:
+        doctor_value = unit_data['doctor_value']
+        nurse_value = unit_data['nurse_value']
+        tech_value = unit_data['tech_value']
         total_val = doctor_value + nurse_value + tech_value
         
         if total_val > 0:
@@ -1238,17 +1342,56 @@ def export_summary(
             nurse_ratio = 0
             tech_ratio = 0
         
+        # 获取参考值
+        ref_value = reference_values.get(unit_code)
+        if ref_value is not None:
+            has_reference = True
+            total_reference_value += Decimal(str(ref_value))
+        
+        # 计算核算/实发比例
+        actual_ref_ratio = None
+        if ref_value is not None and ref_value != 0:
+            actual_ref_ratio = float(total_val / Decimal(str(ref_value)))
+        
+        # 获取环比价值
+        mom_value = mom_summary.get(unit_code)
+        if mom_value is not None:
+            has_mom = True
+            total_mom_value += mom_value
+        
+        # 计算当期/环期比例
+        mom_ratio = None
+        if mom_value is not None and mom_value != 0:
+            mom_ratio = float(total_val / mom_value)
+        
+        # 获取同比价值
+        yoy_value = yoy_summary.get(unit_code)
+        if yoy_value is not None:
+            has_yoy = True
+            total_yoy_value += yoy_value
+        
+        # 计算当期/同期比例
+        yoy_ratio = None
+        if yoy_value is not None and yoy_value != 0:
+            yoy_ratio = float(total_val / yoy_value)
+        
         departments_data.append({
-            'department_id': dept_id_val,
-            'department_code': dept.accounting_unit_code,
-            'department_name': dept.accounting_unit_name or dept.his_name,
+            'department_id': unit_data['dept_ids'][0],
+            'department_code': unit_code,
+            'department_name': unit_name,
             'doctor_value': doctor_value,
             'doctor_ratio': doctor_ratio,
             'nurse_value': nurse_value,
             'nurse_ratio': nurse_ratio,
             'tech_value': tech_value,
             'tech_ratio': tech_ratio,
-            'total_value': total_val
+            'total_value': total_val,
+            'reference_value': ref_value,
+            'actual_reference_ratio': actual_ref_ratio,
+            'mom_value': float(mom_value) if mom_value is not None else None,
+            'mom_ratio': mom_ratio,
+            'yoy_value': float(yoy_value) if yoy_value is not None else None,
+            'yoy_ratio': yoy_ratio
         })
         
         total_doctor_value += doctor_value
@@ -1257,6 +1400,19 @@ def export_summary(
     
     # 计算全院汇总
     total_value = total_doctor_value + total_nurse_value + total_tech_value
+    
+    # 全院汇总的比例计算
+    summary_actual_ref_ratio = None
+    if has_reference and total_reference_value != 0:
+        summary_actual_ref_ratio = float(total_value / total_reference_value)
+    
+    summary_mom_ratio = None
+    if has_mom and total_mom_value != 0:
+        summary_mom_ratio = float(total_value / total_mom_value)
+    
+    summary_yoy_ratio = None
+    if has_yoy and total_yoy_value != 0:
+        summary_yoy_ratio = float(total_value / total_yoy_value)
     
     summary_data = {
         'department_id': 0,
@@ -1268,7 +1424,13 @@ def export_summary(
         'nurse_ratio': float(total_nurse_value / total_value * 100) if total_value > 0 else 0,
         'tech_value': total_tech_value,
         'tech_ratio': float(total_tech_value / total_value * 100) if total_value > 0 else 0,
-        'total_value': total_value
+        'total_value': total_value,
+        'reference_value': float(total_reference_value) if has_reference else None,
+        'actual_reference_ratio': summary_actual_ref_ratio,
+        'mom_value': float(total_mom_value) if has_mom else None,
+        'mom_ratio': summary_mom_ratio,
+        'yoy_value': float(total_yoy_value) if has_yoy else None,
+        'yoy_ratio': summary_yoy_ratio
     }
     
     # 获取医院名称
@@ -1276,17 +1438,21 @@ def export_summary(
     hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
     hospital_name = hospital.name if hospital else "未知医院"
     
+    # 获取版本号
+    version = task.model_version.version if task.model_version else None
+    
     # 生成Excel
     excel_data = {
         'summary': summary_data,
         'departments': departments_data
     }
     
-    excel_file = ExportService.export_summary_to_excel(excel_data, period, hospital_name)
+    excel_file = ExportService.export_summary_to_excel(excel_data, period, hospital_name, version)
     
     # 返回文件流
     from urllib.parse import quote
-    filename = f"{hospital_name}_科室业务价值汇总_{period}.xlsx"
+    version_suffix = f"_v{version}" if version else ""
+    filename = f"{hospital_name}_科室业务价值汇总_{period}{version_suffix}.xlsx"
     encoded_filename = quote(filename)
     
     return StreamingResponse(
@@ -1302,17 +1468,23 @@ def export_summary(
 @router.get("/results/export/detail")
 def export_detail(
     task_id: str = Query(..., description="计算任务ID"),
+    mom_task_id: Optional[str] = Query(None, description="环比任务ID"),
+    yoy_task_id: Optional[str] = Query(None, description="同比任务ID"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """导出明细表（同步，ZIP打包）"""
+    """导出明细表（同步，ZIP打包）- 按核算单元分组，与页面显示一致，包含参考值、环比、同比数据"""
     from fastapi.responses import StreamingResponse
     from app.services.export_service import ExportService
     from urllib.parse import quote
     from collections import defaultdict
+    from app.utils.hospital_filter import get_current_hospital_id_or_raise
+    from app.models.orientation_rule import OrientationRule
+    from app.models.reference_value import ReferenceValue
     
     # 验证任务是否存在且属于当前医疗机构
     task = _get_task_with_hospital_check(db, task_id)
+    hospital_id = get_current_hospital_id_or_raise()
     
     # 查询所有科室的计算结果（按模型节点排序）
     all_results = db.query(CalculationResult).join(
@@ -1332,31 +1504,74 @@ def export_detail(
     model_nodes = db.query(ModelNode).filter(ModelNode.id.in_(node_ids)).all()
     node_info_map = {node.id: node for node in model_nodes}
     
+    # 查询导向规则名称映射（与页面显示一致）
+    orientation_rule_ids = set()
+    for node in model_nodes:
+        if node.orientation_rule_ids:
+            orientation_rule_ids.update(node.orientation_rule_ids)
+    
+    orientation_rules = {}
+    if orientation_rule_ids:
+        rules = db.query(OrientationRule).filter(OrientationRule.id.in_(orientation_rule_ids)).all()
+        orientation_rules = {rule.id: rule.name for rule in rules}
+    
     # 按科室分组
     results_by_dept = defaultdict(list)
     for result in all_results:
         results_by_dept[result.department_id].append(result)
     
-    # 获取科室信息
-    dept_ids = list(results_by_dept.keys())
-    departments = db.query(Department).filter(Department.id.in_(dept_ids)).all()
-    dept_map = {d.id: d for d in departments}
+    # 获取所有参与核算的科室（is_active=True）
+    all_active_depts = db.query(Department).filter(
+        Department.hospital_id == hospital_id,
+        Department.is_active == True
+    ).order_by(Department.sort_order, Department.id).all()
     
-    # 为每个科室生成明细数据
+    # 按核算单元分组（与页面显示逻辑一致）
+    accounting_units = {}  # key: (unit_code, unit_name), value: {dept_ids, sort_order}
+    
+    for dept in all_active_depts:
+        unit_code = dept.accounting_unit_code or dept.his_code
+        unit_name = dept.accounting_unit_name or dept.his_name
+        unit_key = (unit_code, unit_name)
+        
+        if unit_key not in accounting_units:
+            accounting_units[unit_key] = {
+                'dept_ids': [],
+                'sort_order': dept.sort_order
+            }
+        accounting_units[unit_key]['dept_ids'].append(dept.id)
+    
+    # 为每个核算单元生成明细数据
     departments_data = []
     
-    for dept_id, results in sorted(results_by_dept.items()):
-        dept = dept_map.get(dept_id)
-        if not dept:
+    # 按sort_order排序
+    sorted_units = sorted(accounting_units.items(), key=lambda x: x[1]['sort_order'])
+    
+    for (unit_code, unit_name), unit_data in sorted_units:
+        # 合并该核算单元下所有科室的计算结果
+        combined_results = []
+        for dept_id in unit_data['dept_ids']:
+            combined_results.extend(results_by_dept.get(dept_id, []))
+        
+        if not combined_results:
             continue
         
         # 构建树形结构（复用现有逻辑）
-        def build_dimension_tree(parent_id, level):
+        def build_dimension_tree(parent_id, level, results):
             """递归构建维度树"""
             children = []
             for result in results:
                 if result.parent_id == parent_id and result.node_type == "dimension":
                     node_info = node_info_map.get(result.node_id)
+                    
+                    # 获取导向规则名称（与页面显示一致）
+                    orientation_names = []
+                    if node_info and node_info.orientation_rule_ids:
+                        orientation_names = [
+                            orientation_rules.get(rule_id, f"规则{rule_id}")
+                            for rule_id in node_info.orientation_rule_ids
+                        ]
+                    business_guide = "、".join(orientation_names) if orientation_names else (node_info.business_guide if node_info else None)
                     
                     dim = {
                         'node_id': result.node_id,
@@ -1368,9 +1583,10 @@ def export_detail(
                         'ratio': result.ratio or 0,
                         'workload': result.workload,
                         'weight': result.weight,
-                        'business_guide': node_info.business_guide if node_info else None,
+                        'original_weight': result.original_weight,
+                        'business_guide': business_guide,
                         'sort_order': node_info.sort_order if node_info else 999,
-                        'children': build_dimension_tree(result.node_id, level + 1)
+                        'children': build_dimension_tree(result.node_id, level + 1, results)
                     }
                     children.append(dim)
             # 按sort_order排序（同一父节点下的兄弟节点排序）
@@ -1414,11 +1630,13 @@ def export_detail(
                     ratio = node.get('ratio') or 0
                 
                 if is_leaf:
+                    # 叶子节点：显示完整信息（与页面显示一致）
+                    hospital_value = node.get('original_weight') or node.get('weight')
                     tree_node = {
                         "id": node['node_id'],
                         "dimension_name": node['dimension_name'],
                         "workload": current_workload,
-                        "hospital_value": str(node['weight']) if node.get('weight') is not None else "-",
+                        "hospital_value": str(hospital_value) if hospital_value is not None else "-",
                         "business_guide": node.get('business_guide') or "-",
                         "dept_value": str(node['weight']) if node.get('weight') is not None else "-",
                         "amount": current_amount,
@@ -1465,10 +1683,10 @@ def export_detail(
         nurse_rows = []
         tech_rows = []
         
-        sequences = [r for r in results if r.node_type == "sequence"]
+        sequences = [r for r in combined_results if r.node_type == "sequence"]
         
         for seq in sequences:
-            dimensions = build_dimension_tree(seq.node_id, 1)
+            dimensions = build_dimension_tree(seq.node_id, 1, combined_results)
             rows = build_tree_rows(dimensions)
             
             if "医生" in seq.node_name:
@@ -1479,28 +1697,633 @@ def export_detail(
                 tech_rows = rows
         
         departments_data.append({
-            'dept_name': dept.his_name,
+            'dept_name': unit_name,
             'doctor': doctor_rows,
             'nurse': nurse_rows,
             'tech': tech_rows
         })
     
-    # 获取医院名称（通过model_version获取hospital_id）
+    # 获取医院名称
     from app.models.hospital import Hospital
-    hospital_id = task.model_version.hospital_id if task.model_version else None
-    hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first() if hospital_id else None
+    from decimal import Decimal
+    hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
     hospital_name = hospital.name if hospital else "未知医院"
     
-    # 生成ZIP文件
-    zip_file = ExportService.export_all_details_to_zip(task.period, departments_data, hospital_name)
+    # 生成全院汇总数据（按维度节点累加所有科室的数据）
+    node_aggregated = defaultdict(lambda: {
+        'node_id': 0,
+        'node_name': '',
+        'node_code': '',
+        'node_type': '',
+        'parent_id': None,
+        'workload': Decimal('0'),
+        'value': Decimal('0'),
+        'weight': None,
+        'business_guide': None
+    })
     
-    # 返回文件流
-    filename = f"{hospital_name}_业务价值明细表_{task.period}.zip"
+    for result in all_results:
+        node_id = result.node_id
+        agg = node_aggregated[node_id]
+        
+        if agg['node_id'] == 0:
+            agg['node_id'] = result.node_id
+            agg['node_name'] = result.node_name
+            agg['node_code'] = result.node_code
+            agg['node_type'] = result.node_type
+            agg['parent_id'] = result.parent_id
+            agg['weight'] = result.weight
+            node_info = node_info_map.get(result.node_id)
+            if node_info:
+                orientation_names = []
+                if node_info.orientation_rule_ids:
+                    orientation_names = [
+                        orientation_rules.get(rule_id, f"规则{rule_id}")
+                        for rule_id in node_info.orientation_rule_ids
+                    ]
+                agg['business_guide'] = "、".join(orientation_names) if orientation_names else node_info.business_guide
+        
+        if result.workload:
+            agg['workload'] += result.workload
+        if result.value:
+            agg['value'] += result.value
+    
+    # 构建全院汇总的树形结构
+    def build_hospital_dimension_tree(parent_id, level):
+        children = []
+        for node_id, agg in node_aggregated.items():
+            if agg['parent_id'] == parent_id and agg['node_type'] == "dimension":
+                node_info = node_info_map.get(agg['node_id'])
+                dim = {
+                    'node_id': agg['node_id'],
+                    'parent_id': agg['parent_id'],
+                    'dimension_name': agg['node_name'],
+                    'dimension_code': agg['node_code'],
+                    'level': level,
+                    'value': agg['value'] or 0,
+                    'ratio': 0,
+                    'workload': agg['workload'],
+                    'weight': agg['weight'],
+                    'business_guide': agg['business_guide'],
+                    'sort_order': node_info.sort_order if node_info else 999,
+                    'children': build_hospital_dimension_tree(agg['node_id'], level + 1)
+                }
+                children.append(dim)
+        children.sort(key=lambda x: x['sort_order'])
+        return children
+    
+    def build_hospital_tree_rows(dimensions):
+        rows = []
+        
+        def calculate_sum_from_children(node):
+            if not node.get('children') or len(node['children']) == 0:
+                return node.get('workload') or 0, node.get('value') or 0
+            total_workload = 0
+            total_amount = 0
+            for child in node['children']:
+                child_workload, child_amount = calculate_sum_from_children(child)
+                total_workload += child_workload
+                total_amount += child_amount
+            return total_workload, total_amount
+        
+        def build_tree_node(node, siblings_total=None):
+            is_leaf = not node.get('children') or len(node['children']) == 0
+            
+            if is_leaf:
+                current_amount = node.get('value') or 0
+                current_workload = node.get('workload') or 0
+            else:
+                current_workload, current_amount = calculate_sum_from_children(node)
+            
+            if siblings_total and siblings_total > 0:
+                ratio = (float(current_amount) / float(siblings_total) * 100)
+                ratio = Decimal(str(ratio)).quantize(Decimal("0.01"))
+            else:
+                ratio = node.get('ratio') or 0
+            
+            tree_node = {
+                "id": node['node_id'],
+                "dimension_name": node['dimension_name'],
+                "workload": current_workload,
+                "hospital_value": str(node['weight']) if node.get('weight') is not None else "-",
+                "business_guide": node.get('business_guide') or "-",
+                "amount": current_amount,
+                "ratio": ratio
+            }
+            
+            if node.get('children'):
+                tree_node["children"] = []
+                children_total = sum(
+                    (calculate_sum_from_children(child)[1] if child.get('children') else (child.get('value') or 0))
+                    for child in node['children']
+                )
+                for child in node['children']:
+                    child_node = build_tree_node(child, children_total)
+                    tree_node["children"].append(child_node)
+            
+            return tree_node
+        
+        first_level_total = sum(
+            (calculate_sum_from_children(dim)[1] if dim.get('children') else (dim.get('value') or 0))
+            for dim in dimensions
+        )
+        
+        for dim in dimensions:
+            tree_node = build_tree_node(dim, first_level_total)
+            rows.append(tree_node)
+        
+        return rows
+    
+    # 生成全院汇总的各序列数据
+    hospital_detail_data = {'doctor': [], 'nurse': [], 'tech': []}
+    for node_id, agg in node_aggregated.items():
+        if agg['node_type'] == "sequence":
+            dimensions = build_hospital_dimension_tree(agg['node_id'], 1)
+            rows = build_hospital_tree_rows(dimensions)
+            
+            if "医生" in agg['node_name']:
+                hospital_detail_data['doctor'] = rows
+            elif "护理" in agg['node_name']:
+                hospital_detail_data['nurse'] = rows
+            elif "医技" in agg['node_name']:
+                hospital_detail_data['tech'] = rows
+    
+    # 生成汇总表数据（复用汇总API的逻辑）
+    def calculate_sum_from_children_for_summary(node_id, results):
+        """递归计算节点的价值（从子节点汇总）"""
+        current_node = next((r for r in results if r.node_id == node_id), None)
+        if not current_node:
+            return Decimal('0')
+        children = [r for r in results if r.parent_id == node_id and r.node_type == "dimension"]
+        if not children:
+            return current_node.value or Decimal('0')
+        total_value = Decimal('0')
+        for child in children:
+            child_value = calculate_sum_from_children_for_summary(child.node_id, results)
+            total_value += child_value
+        return total_value
+    
+    # 辅助函数：获取任务的汇总数据（按科室代码索引）
+    def get_task_summary_by_dept_code(task_id_param):
+        """获取指定任务的汇总数据，返回按科室代码索引的字典"""
+        if not task_id_param:
+            return {}
+        
+        compare_results = db.query(CalculationResult).filter(
+            CalculationResult.task_id == task_id_param
+        ).all()
+        
+        if not compare_results:
+            return {}
+        
+        # 按科室分组
+        compare_by_dept = defaultdict(list)
+        for result in compare_results:
+            compare_by_dept[result.department_id].append(result)
+        
+        # 按核算单元汇总
+        compare_units = {}
+        for dept in all_active_depts:
+            dept_id_val = dept.id
+            results = compare_by_dept.get(dept_id_val, [])
+            
+            sequences = [r for r in results if r.node_type == "sequence"]
+            total_val = Decimal('0')
+            
+            for seq in sequences:
+                seq_value = calculate_sum_from_children_for_summary(seq.node_id, results)
+                total_val += seq_value
+            
+            unit_code = dept.accounting_unit_code or dept.his_code
+            if unit_code not in compare_units:
+                compare_units[unit_code] = Decimal('0')
+            compare_units[unit_code] += total_val
+        
+        return compare_units
+    
+    # 获取参考值数据（按科室代码索引）
+    reference_values = {}
+    ref_records = db.query(ReferenceValue).filter(
+        ReferenceValue.hospital_id == hospital_id,
+        ReferenceValue.period == task.period
+    ).all()
+    for ref in ref_records:
+        reference_values[ref.department_code] = ref.reference_value
+    
+    # 获取环比数据
+    mom_summary = get_task_summary_by_dept_code(mom_task_id)
+    
+    # 获取同比数据
+    yoy_summary = get_task_summary_by_dept_code(yoy_task_id)
+    
+    # 按核算单元计算汇总
+    summary_by_unit = {}
+    for (unit_code, unit_name), unit_data in sorted_units:
+        combined_results = []
+        for dept_id in unit_data['dept_ids']:
+            combined_results.extend(results_by_dept.get(dept_id, []))
+        
+        sequences = [r for r in combined_results if r.node_type == "sequence"]
+        doctor_value = Decimal('0')
+        nurse_value = Decimal('0')
+        tech_value = Decimal('0')
+        
+        for seq in sequences:
+            seq_value = calculate_sum_from_children_for_summary(seq.node_id, combined_results)
+            if "医生" in seq.node_name:
+                doctor_value += seq_value
+            elif "护理" in seq.node_name:
+                nurse_value += seq_value
+            elif "医技" in seq.node_name:
+                tech_value += seq_value
+        
+        total_val = doctor_value + nurse_value + tech_value
+        
+        # 获取参考值
+        ref_value = reference_values.get(unit_code)
+        
+        # 计算核算/实发比例
+        actual_ref_ratio = None
+        if ref_value is not None and ref_value != 0:
+            actual_ref_ratio = float(total_val / Decimal(str(ref_value)))
+        
+        # 获取环比价值
+        mom_value = mom_summary.get(unit_code)
+        
+        # 计算当期/环期比例
+        mom_ratio = None
+        if mom_value is not None and mom_value != 0:
+            mom_ratio = float(total_val / mom_value)
+        
+        # 获取同比价值
+        yoy_value = yoy_summary.get(unit_code)
+        
+        # 计算当期/同期比例
+        yoy_ratio = None
+        if yoy_value is not None and yoy_value != 0:
+            yoy_ratio = float(total_val / yoy_value)
+        
+        summary_by_unit[(unit_code, unit_name)] = {
+            'doctor_value': doctor_value,
+            'nurse_value': nurse_value,
+            'tech_value': tech_value,
+            'total_value': total_val,
+            'doctor_ratio': float(doctor_value / total_val * 100) if total_val > 0 else 0,
+            'nurse_ratio': float(nurse_value / total_val * 100) if total_val > 0 else 0,
+            'tech_ratio': float(tech_value / total_val * 100) if total_val > 0 else 0,
+            'reference_value': ref_value,
+            'actual_reference_ratio': actual_ref_ratio,
+            'mom_value': float(mom_value) if mom_value is not None else None,
+            'mom_ratio': mom_ratio,
+            'yoy_value': float(yoy_value) if yoy_value is not None else None,
+            'yoy_ratio': yoy_ratio
+        }
+    
+    # 构建汇总表数据结构
+    total_doctor = sum(v['doctor_value'] for v in summary_by_unit.values())
+    total_nurse = sum(v['nurse_value'] for v in summary_by_unit.values())
+    total_tech = sum(v['tech_value'] for v in summary_by_unit.values())
+    total_all = total_doctor + total_nurse + total_tech
+    
+    # 计算全院汇总的参考值、环比、同比
+    total_reference_value = Decimal('0')
+    total_mom_value = Decimal('0')
+    total_yoy_value = Decimal('0')
+    has_reference = False
+    has_mom = False
+    has_yoy = False
+    
+    for v in summary_by_unit.values():
+        if v['reference_value'] is not None:
+            has_reference = True
+            total_reference_value += Decimal(str(v['reference_value']))
+        if v['mom_value'] is not None:
+            has_mom = True
+            total_mom_value += Decimal(str(v['mom_value']))
+        if v['yoy_value'] is not None:
+            has_yoy = True
+            total_yoy_value += Decimal(str(v['yoy_value']))
+    
+    # 全院汇总的比例计算
+    summary_actual_ref_ratio = None
+    if has_reference and total_reference_value != 0:
+        summary_actual_ref_ratio = float(total_all / total_reference_value)
+    
+    summary_mom_ratio = None
+    if has_mom and total_mom_value != 0:
+        summary_mom_ratio = float(total_all / total_mom_value)
+    
+    summary_yoy_ratio = None
+    if has_yoy and total_yoy_value != 0:
+        summary_yoy_ratio = float(total_all / total_yoy_value)
+    
+    summary_data = {
+        'summary': {
+            'department_id': 0,
+            'department_code': None,
+            'department_name': '全院汇总',
+            'doctor_value': total_doctor,
+            'doctor_ratio': float(total_doctor / total_all * 100) if total_all > 0 else 0,
+            'nurse_value': total_nurse,
+            'nurse_ratio': float(total_nurse / total_all * 100) if total_all > 0 else 0,
+            'tech_value': total_tech,
+            'tech_ratio': float(total_tech / total_all * 100) if total_all > 0 else 0,
+            'total_value': total_all,
+            'reference_value': float(total_reference_value) if has_reference else None,
+            'actual_reference_ratio': summary_actual_ref_ratio,
+            'mom_value': float(total_mom_value) if has_mom else None,
+            'mom_ratio': summary_mom_ratio,
+            'yoy_value': float(total_yoy_value) if has_yoy else None,
+            'yoy_ratio': summary_yoy_ratio
+        },
+        'departments': [
+            {
+                'department_id': unit_data['dept_ids'][0] if accounting_units[(unit_code, unit_name)]['dept_ids'] else 0,
+                'department_code': unit_code,
+                'department_name': unit_name,
+                'doctor_value': summary_by_unit[(unit_code, unit_name)]['doctor_value'],
+                'doctor_ratio': summary_by_unit[(unit_code, unit_name)]['doctor_ratio'],
+                'nurse_value': summary_by_unit[(unit_code, unit_name)]['nurse_value'],
+                'nurse_ratio': summary_by_unit[(unit_code, unit_name)]['nurse_ratio'],
+                'tech_value': summary_by_unit[(unit_code, unit_name)]['tech_value'],
+                'tech_ratio': summary_by_unit[(unit_code, unit_name)]['tech_ratio'],
+                'total_value': summary_by_unit[(unit_code, unit_name)]['total_value'],
+                'reference_value': summary_by_unit[(unit_code, unit_name)]['reference_value'],
+                'actual_reference_ratio': summary_by_unit[(unit_code, unit_name)]['actual_reference_ratio'],
+                'mom_value': summary_by_unit[(unit_code, unit_name)]['mom_value'],
+                'mom_ratio': summary_by_unit[(unit_code, unit_name)]['mom_ratio'],
+                'yoy_value': summary_by_unit[(unit_code, unit_name)]['yoy_value'],
+                'yoy_ratio': summary_by_unit[(unit_code, unit_name)]['yoy_ratio']
+            }
+            for (unit_code, unit_name), _ in sorted_units
+            if (unit_code, unit_name) in summary_by_unit
+        ]
+    }
+    
+    # 获取版本号
+    version = task.model_version.version if task.model_version else None
+    
+    # 生成ZIP文件（包含汇总表、全院明细和各科室明细）
+    zip_file = ExportService.export_all_reports_to_zip(
+        task.period, summary_data, departments_data, hospital_name, hospital_detail_data, version
+    )
+    
+    # 返回文件流（版本号本身可能已包含v前缀，不重复添加）
+    version_suffix = f"_{version}" if version else ""
+    filename = f"{hospital_name}_业务价值报表_{task.period}{version_suffix}.zip"
     encoded_filename = quote(filename)
     
     return StreamingResponse(
         zip_file,
         media_type="application/zip",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
+            "Access-Control-Expose-Headers": "Content-Disposition"
+        }
+    )
+
+
+@router.get("/results/export/hospital-detail")
+def export_hospital_detail(
+    task_id: str = Query(..., description="计算任务ID"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """导出全院明细表（单个Excel文件，包含所有科室数据）"""
+    from fastapi.responses import StreamingResponse
+    from app.services.export_service import ExportService
+    from urllib.parse import quote
+    from collections import defaultdict
+    from app.utils.hospital_filter import get_current_hospital_id_or_raise
+    from app.models.orientation_rule import OrientationRule
+    
+    # 验证任务是否存在且属于当前医疗机构
+    task = _get_task_with_hospital_check(db, task_id)
+    hospital_id = get_current_hospital_id_or_raise()
+    
+    # 查询所有科室的计算结果（按模型节点排序）
+    all_results = db.query(CalculationResult).join(
+        ModelNode, CalculationResult.node_id == ModelNode.id
+    ).filter(
+        CalculationResult.task_id == task_id
+    ).order_by(
+        CalculationResult.department_id,
+        ModelNode.sort_order
+    ).all()
+    
+    if not all_results:
+        raise HTTPException(status_code=404, detail="未找到计算结果")
+    
+    # 查询模型节点信息
+    node_ids = list(set([r.node_id for r in all_results]))
+    model_nodes = db.query(ModelNode).filter(ModelNode.id.in_(node_ids)).all()
+    node_info_map = {node.id: node for node in model_nodes}
+    
+    # 查询导向规则名称映射
+    orientation_rule_ids = set()
+    for node in model_nodes:
+        if node.orientation_rule_ids:
+            orientation_rule_ids.update(node.orientation_rule_ids)
+    
+    orientation_rules = {}
+    if orientation_rule_ids:
+        rules = db.query(OrientationRule).filter(OrientationRule.id.in_(orientation_rule_ids)).all()
+        orientation_rules = {rule.id: rule.name for rule in rules}
+    
+    # 按科室分组
+    results_by_dept = defaultdict(list)
+    for result in all_results:
+        results_by_dept[result.department_id].append(result)
+    
+    # 获取所有参与核算的科室
+    all_active_depts = db.query(Department).filter(
+        Department.hospital_id == hospital_id,
+        Department.is_active == True
+    ).order_by(Department.sort_order, Department.id).all()
+    
+    # 按核算单元分组
+    accounting_units = {}
+    for dept in all_active_depts:
+        unit_code = dept.accounting_unit_code or dept.his_code
+        unit_name = dept.accounting_unit_name or dept.his_name
+        unit_key = (unit_code, unit_name)
+        
+        if unit_key not in accounting_units:
+            accounting_units[unit_key] = {
+                'dept_ids': [],
+                'sort_order': dept.sort_order
+            }
+        accounting_units[unit_key]['dept_ids'].append(dept.id)
+    
+    # 为每个核算单元生成明细数据（复用export_detail的逻辑）
+    departments_data = []
+    sorted_units = sorted(accounting_units.items(), key=lambda x: x[1]['sort_order'])
+    
+    for (unit_code, unit_name), unit_data in sorted_units:
+        combined_results = []
+        for dept_id in unit_data['dept_ids']:
+            combined_results.extend(results_by_dept.get(dept_id, []))
+        
+        if not combined_results:
+            continue
+        
+        # 构建树形结构
+        def build_dimension_tree(parent_id, level, results):
+            children = []
+            for result in results:
+                if result.parent_id == parent_id and result.node_type == "dimension":
+                    node_info = node_info_map.get(result.node_id)
+                    
+                    orientation_names = []
+                    if node_info and node_info.orientation_rule_ids:
+                        orientation_names = [
+                            orientation_rules.get(rule_id, f"规则{rule_id}")
+                            for rule_id in node_info.orientation_rule_ids
+                        ]
+                    business_guide = "、".join(orientation_names) if orientation_names else (node_info.business_guide if node_info else None)
+                    
+                    dim = {
+                        'node_id': result.node_id,
+                        'parent_id': result.parent_id,
+                        'dimension_name': result.node_name,
+                        'dimension_code': result.node_code,
+                        'level': level,
+                        'value': result.value or 0,
+                        'ratio': result.ratio or 0,
+                        'workload': result.workload,
+                        'weight': result.weight,
+                        'original_weight': result.original_weight,
+                        'business_guide': business_guide,
+                        'sort_order': node_info.sort_order if node_info else 999,
+                        'children': build_dimension_tree(result.node_id, level + 1, results)
+                    }
+                    children.append(dim)
+            children.sort(key=lambda x: x['sort_order'])
+            return children
+        
+        def build_tree_rows(dimensions):
+            rows = []
+            
+            def calculate_sum_from_children(node):
+                if not node.get('children') or len(node['children']) == 0:
+                    return node.get('workload') or 0, node.get('value') or 0
+                
+                total_workload = 0
+                total_amount = 0
+                for child in node['children']:
+                    child_workload, child_amount = calculate_sum_from_children(child)
+                    total_workload += child_workload
+                    total_amount += child_amount
+                
+                return total_workload, total_amount
+            
+            def build_tree_node(node, siblings_total=None):
+                is_leaf = not node.get('children') or len(node['children']) == 0
+                
+                if is_leaf:
+                    current_amount = node.get('value') or 0
+                    current_workload = node.get('workload') or 0
+                else:
+                    current_workload, current_amount = calculate_sum_from_children(node)
+                
+                if siblings_total and siblings_total > 0:
+                    ratio = (current_amount / siblings_total * 100)
+                    from decimal import Decimal
+                    ratio = Decimal(str(ratio)).quantize(Decimal("0.01"))
+                else:
+                    ratio = node.get('ratio') or 0
+                
+                if is_leaf:
+                    hospital_value = node.get('original_weight') or node.get('weight')
+                    tree_node = {
+                        "id": node['node_id'],
+                        "dimension_name": node['dimension_name'],
+                        "workload": current_workload,
+                        "hospital_value": str(hospital_value) if hospital_value is not None else "-",
+                        "business_guide": node.get('business_guide') or "-",
+                        "dept_value": str(node['weight']) if node.get('weight') is not None else "-",
+                        "amount": current_amount,
+                        "ratio": ratio
+                    }
+                else:
+                    tree_node = {
+                        "id": node['node_id'],
+                        "dimension_name": node['dimension_name'],
+                        "workload": current_workload,
+                        "hospital_value": "-",
+                        "business_guide": "-",
+                        "dept_value": "-",
+                        "amount": current_amount,
+                        "ratio": ratio,
+                        "children": []
+                    }
+                
+                if node.get('children'):
+                    children_total = sum(
+                        (calculate_sum_from_children(child)[1] if child.get('children') else (child.get('value') or 0))
+                        for child in node['children']
+                    )
+                    
+                    for child in node['children']:
+                        child_node = build_tree_node(child, children_total)
+                        tree_node["children"].append(child_node)
+                
+                return tree_node
+            
+            first_level_total = sum(
+                (calculate_sum_from_children(dim)[1] if dim.get('children') else (dim.get('value') or 0))
+                for dim in dimensions
+            )
+            
+            for dim in dimensions:
+                tree_node = build_tree_node(dim, first_level_total)
+                rows.append(tree_node)
+            
+            return rows
+        
+        doctor_rows = []
+        nurse_rows = []
+        tech_rows = []
+        
+        sequences = [r for r in combined_results if r.node_type == "sequence"]
+        
+        for seq in sequences:
+            dimensions = build_dimension_tree(seq.node_id, 1, combined_results)
+            rows = build_tree_rows(dimensions)
+            
+            if "医生" in seq.node_name:
+                doctor_rows = rows
+            elif "护理" in seq.node_name:
+                nurse_rows = rows
+            elif "医技" in seq.node_name:
+                tech_rows = rows
+        
+        departments_data.append({
+            'dept_name': unit_name,
+            'doctor': doctor_rows,
+            'nurse': nurse_rows,
+            'tech': tech_rows
+        })
+    
+    # 获取医院名称
+    from app.models.hospital import Hospital
+    hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+    hospital_name = hospital.name if hospital else "未知医院"
+    
+    # 获取版本号
+    version = task.model_version.version if task.model_version else None
+    
+    # 生成Excel文件
+    excel_file = ExportService.export_hospital_detail_to_excel(task.period, departments_data, hospital_name, version)
+    
+    # 返回文件流
+    version_suffix = f"_v{version}" if version else ""
+    filename = f"{hospital_name}_全院业务价值明细表_{task.period}{version_suffix}.xlsx"
+    encoded_filename = quote(filename)
+    
+    return StreamingResponse(
+        excel_file,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={
             "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
             "Access-Control-Expose-Headers": "Content-Disposition"

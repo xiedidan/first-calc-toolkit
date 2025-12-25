@@ -110,6 +110,49 @@ def get_available_periods(
     return [p[0] for p in periods]
 
 
+# 清除路由必须在 /{ref_id} 之前定义，否则会被当作 ref_id 参数解析
+@router.delete("/clear-all")
+def clear_all_reference_values(
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user),
+):
+    """清空当前医院的所有参考价值"""
+    hospital_id = get_current_hospital_id_or_raise()
+    
+    deleted_count = db.query(ReferenceValue).filter(
+        ReferenceValue.hospital_id == hospital_id
+    ).delete()
+    
+    db.commit()
+    
+    return {
+        "message": "已清空所有参考价值",
+        "deleted_count": deleted_count
+    }
+
+
+@router.delete("/period/{period}/clear-all")
+def clear_period_reference_values(
+    period: str,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user),
+):
+    """清空指定月份的所有参考价值"""
+    hospital_id = get_current_hospital_id_or_raise()
+    
+    deleted_count = db.query(ReferenceValue).filter(
+        ReferenceValue.hospital_id == hospital_id,
+        ReferenceValue.period == period
+    ).delete()
+    
+    db.commit()
+    
+    return {
+        "message": f"已清空 {period} 的所有参考价值",
+        "deleted_count": deleted_count
+    }
+
+
 @router.get("/{ref_id}", response_model=ReferenceValueSchema)
 def get_reference_value(
     ref_id: int,
@@ -209,48 +252,6 @@ def delete_reference_value(
     db.commit()
     
     return {"message": "删除成功"}
-
-
-@router.delete("/period/{period}/clear-all")
-def clear_period_reference_values(
-    period: str,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user),
-):
-    """清空指定月份的所有参考价值"""
-    hospital_id = get_current_hospital_id_or_raise()
-    
-    deleted_count = db.query(ReferenceValue).filter(
-        ReferenceValue.hospital_id == hospital_id,
-        ReferenceValue.period == period
-    ).delete()
-    
-    db.commit()
-    
-    return {
-        "message": f"已清空 {period} 的所有参考价值",
-        "deleted_count": deleted_count
-    }
-
-
-@router.delete("/clear-all")
-def clear_all_reference_values(
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user),
-):
-    """清空当前医院的所有参考价值"""
-    hospital_id = get_current_hospital_id_or_raise()
-    
-    deleted_count = db.query(ReferenceValue).filter(
-        ReferenceValue.hospital_id == hospital_id
-    ).delete()
-    
-    db.commit()
-    
-    return {
-        "message": "已清空所有参考价值",
-        "deleted_count": deleted_count
-    }
 
 
 # 智能导入相关接口

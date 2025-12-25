@@ -1,12 +1,12 @@
 version: '3.8'
 
 # ============================================
-# 医院科室业务价值评估工具 - 离线部署配置
-# 适用于: 使用现有PostgreSQL数据库的场景
+# Hospital Value Assessment Tool - Offline Deployment
+# For: Using existing PostgreSQL database
 # ============================================
 
 services:
-  # Redis服务 - 消息队列和缓存
+  # Redis - Message queue and cache
   redis:
     image: redis:7-alpine
     container_name: hospital_redis_offline
@@ -23,7 +23,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # 后端服务 - FastAPI应用
+  # Backend - FastAPI application
   backend:
     image: hospital-backend:latest
     container_name: hospital_backend_offline
@@ -41,7 +41,7 @@ services:
     restart: always
     command: python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
     extra_hosts:
-      # 允许容器访问宿主机的PostgreSQL
+      # Allow container to access host PostgreSQL
       - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -50,7 +50,7 @@ services:
       retries: 3
       start_period: 40s
 
-  # Celery Worker服务 - 异步任务处理
+  # Celery Worker - Async task processing
   celery-worker:
     image: hospital-backend:latest
     container_name: hospital_celery_offline
@@ -68,7 +68,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  # 前端服务 - Nginx + Vue.js
+  # Frontend - Nginx + Vue.js
   frontend:
     image: hospital-frontend:latest
     container_name: hospital_frontend_offline

@@ -6,7 +6,8 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
-from app.models.ai_config import AIConfig
+from app.models.ai_interface import AIInterface
+from app.models.ai_prompt_module import AIPromptModule, PromptModuleCode
 from app.models.ai_prompt_config import AIPromptConfig, AIPromptCategory
 from app.models.analysis_report import AnalysisReport
 from app.models.department import Department
@@ -261,6 +262,49 @@ class AIReportService:
         }
     
     @staticmethod
+    def _get_ai_config(db: Session, hospital_id: int, category: str) -> tuple:
+        """
+        获取AI配置（使用ai_interfaces + ai_prompt_modules体系）
+        
+        Args:
+            db: 数据库会话
+            hospital_id: 医疗机构ID
+            category: 提示词分类
+            
+        Returns:
+            (api_endpoint, api_key, model_name) 元组
+        """
+        # 映射分类到模块代码
+        category_to_module = {
+            AIPromptCategory.REPORT_ISSUES: PromptModuleCode.REPORT_ISSUES,
+            AIPromptCategory.REPORT_PLANS: PromptModuleCode.REPORT_PLANS,
+            AIPromptCategory.CLASSIFICATION: PromptModuleCode.CLASSIFICATION,
+        }
+        
+        module_code = category_to_module.get(category)
+        
+        if not module_code:
+            return (None, None, None)
+        
+        # 从提示词模块获取AI接口配置
+        module = db.query(AIPromptModule).filter(
+            AIPromptModule.hospital_id == hospital_id,
+            AIPromptModule.module_code == module_code
+        ).first()
+        
+        if module and module.ai_interface_id:
+            ai_interface = db.query(AIInterface).filter(
+                AIInterface.id == module.ai_interface_id,
+                AIInterface.is_active == True
+            ).first()
+            
+            if ai_interface:
+                api_key = decrypt_api_key(ai_interface.api_key_encrypted)
+                return (ai_interface.api_endpoint, api_key, ai_interface.model_name)
+        
+        return (None, None, None)
+    
+    @staticmethod
     def generate_report_content(
         db: Session,
         hospital_id: int,
@@ -322,12 +366,10 @@ class AIReportService:
                 detail="医疗机构不存在"
             )
         
-        # 获取AI配置
-        ai_config = db.query(AIConfig).filter(
-            AIConfig.hospital_id == hospital_id
-        ).first()
+        # 获取AI配置（优先使用新的ai_interfaces，回退到旧的ai_configs）
+        api_endpoint, api_key, model_name = AIReportService._get_ai_config(db, hospital_id, category)
         
-        if not ai_config:
+        if not api_endpoint or not api_key:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="请先配置AI接口"
@@ -349,18 +391,131 @@ class AIReportService:
             system_prompt = system_prompt.replace(f"{{{key}}}", value)
             user_prompt = user_prompt.replace(f"{{{key}}}", value)
         
-        # 解密API密钥
-        api_key = decrypt_api_key(ai_config.api_key_encrypted)
+        try:
+            # 调用AI接口
+            start_time = datetime.utcnow()
+            content = call_ai_text_generation(
+                api_endpoint=api_endpoint,
+                api_key=api_key,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                model_name=model_name
+            )
+            end_time = datetime.utcnow()
+            duration = (end_time - start_time).total_seconds()
+            
+            return {
+                "success": True,
+                "content": content,
+                "error": None,
+                "duration": duration,
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "content": None,
+                "error": str(e),
+                "duration": None,
+            }
+    
+    @staticmethod
+    def generate_report_content_preview(
+        db: Session,
+        hospital_id: int,
+        department_id: int,
+        period: str,
+        task_id: str,
+        category: str
+    ) -> Dict[str, Any]:
+        """
+        生成报告内容（预览模式，用于创建报告时）
+        
+        Args:
+            db: 数据库会话
+            hospital_id: 医疗机构ID
+            department_id: 科室ID
+            period: 统计周期
+            task_id: 计算任务ID
+            category: 生成类型（report_issues 或 report_plans）
+            
+        Returns:
+            生成结果
+        """
+        from app.utils.ai_interface import call_ai_text_generation
+        
+        # 验证分类
+        if category not in [AIPromptCategory.REPORT_ISSUES, AIPromptCategory.REPORT_PLANS]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="无效的生成类型，仅支持 report_issues 或 report_plans"
+            )
+        
+        # 获取科室信息
+        department = db.query(Department).filter(
+            Department.id == department_id,
+            Department.hospital_id == hospital_id
+        ).first()
+        
+        if not department:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="科室不存在"
+            )
+        
+        # 获取医院信息
+        hospital = db.query(Hospital).filter(
+            Hospital.id == hospital_id
+        ).first()
+        
+        if not hospital:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="医疗机构不存在"
+            )
+        
+        # 获取AI配置（优先使用新的ai_interfaces，回退到旧的ai_configs）
+        api_endpoint, api_key, model_name = AIReportService._get_ai_config(db, hospital_id, category)
+        
+        if not api_endpoint or not api_key:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="请先配置AI接口"
+            )
+        
+        # 获取提示词配置
+        prompt_config = AIReportService.get_prompt_config(db, hospital_id, category)
+        
+        # 创建一个临时的报告对象用于准备占位符
+        class TempReport:
+            def __init__(self, department_id, period, task_id):
+                self.department_id = department_id
+                self.period = period
+                self.task_id = task_id
+        
+        temp_report = TempReport(department_id, period, task_id)
+        
+        # 准备占位符数据
+        placeholders = AIReportService._prepare_placeholders(
+            db, hospital, department, temp_report
+        )
+        
+        # 替换占位符
+        system_prompt = prompt_config["system_prompt"] or ""
+        user_prompt = prompt_config["user_prompt"] or ""
+        
+        for key, value in placeholders.items():
+            system_prompt = system_prompt.replace(f"{{{key}}}", value)
+            user_prompt = user_prompt.replace(f"{{{key}}}", value)
         
         try:
             # 调用AI接口
             start_time = datetime.utcnow()
             content = call_ai_text_generation(
-                api_endpoint=ai_config.api_endpoint,
+                api_endpoint=api_endpoint,
                 api_key=api_key,
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                model_name=ai_config.model_name or "deepseek-chat"
+                model_name=model_name
             )
             end_time = datetime.utcnow()
             duration = (end_time - start_time).total_seconds()
@@ -421,20 +576,29 @@ class AIReportService:
         dept_work_substance = ""
         
         try:
-            # 查找激活版本的最新完成任务
-            active_version = db.query(ModelVersion).filter(
-                ModelVersion.hospital_id == hospital.id,
-                ModelVersion.is_active == True
-            ).first()
-            
-            if active_version:
+            # 优先使用报告中保存的 task_id，否则查找激活版本的最新完成任务
+            task = None
+            if report.task_id:
                 task = db.query(CalculationTask).filter(
-                    CalculationTask.model_version_id == active_version.id,
-                    CalculationTask.period == report.period,
+                    CalculationTask.task_id == report.task_id,
                     CalculationTask.status == "completed"
-                ).order_by(desc(CalculationTask.completed_at)).first()
+                ).first()
+            
+            if not task:
+                # 回退到查找激活版本的最新完成任务
+                active_version = db.query(ModelVersion).filter(
+                    ModelVersion.hospital_id == hospital.id,
+                    ModelVersion.is_active == True
+                ).first()
                 
-                if task:
+                if active_version:
+                    task = db.query(CalculationTask).filter(
+                        CalculationTask.model_version_id == active_version.id,
+                        CalculationTask.period == report.period,
+                        CalculationTask.status == "completed"
+                    ).order_by(desc(CalculationTask.completed_at)).first()
+            
+            if task:
                     # 获取该科室的所有计算结果（包括序列和维度）
                     all_nodes = db.query(CalculationResult).filter(
                         CalculationResult.task_id == task.task_id,

@@ -4,6 +4,8 @@
 from typing import Optional
 from datetime import datetime
 from io import BytesIO
+
+from app.utils.timezone import china_now
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from fastapi import HTTPException
@@ -169,8 +171,8 @@ class OrientationRuleService:
         # 生成Markdown内容
         markdown_content = OrientationRuleService._generate_markdown(rule)
         
-        # 生成文件名（医院名称_导向名称_时间戳.md）
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # 生成文件名（医院名称_导向名称_时间戳.md）- 使用中国时间
+        timestamp = china_now().strftime("%Y%m%d_%H%M%S")
         filename = f"{hospital_name}_{rule.name}_{timestamp}.md"
         
         # 将内容写入BytesIO
@@ -396,8 +398,8 @@ class OrientationRuleService:
         hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
         hospital_name = hospital.name if hospital else "未知医院"
         
-        # 生成文件名（医院名称_导向名称_时间戳.pdf）
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # 生成文件名（医院名称_导向名称_时间戳.pdf）- 使用中国时间
+        timestamp = china_now().strftime("%Y%m%d_%H%M%S")
         filename = f"{hospital_name}_{rule.name}_{timestamp}.pdf"
         
         return buffer, filename

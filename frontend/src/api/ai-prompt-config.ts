@@ -45,6 +45,16 @@ export interface ReportAIGenerateRequest {
 }
 
 /**
+ * 报告AI预览生成请求（创建报告时使用）
+ */
+export interface ReportAIPreviewGenerateRequest {
+  department_id: number
+  period: string
+  task_id: string
+  category: 'report_issues' | 'report_plans'
+}
+
+/**
  * 报告AI生成响应
  */
 export interface ReportAIGenerateResponse {
@@ -95,6 +105,20 @@ export async function savePromptConfig(
 export async function generateReportContent(
   data: ReportAIGenerateRequest
 ): Promise<ReportAIGenerateResponse> {
-  const res: any = await request.post(`${API_BASE}/generate/report`, data)
+  const res: any = await request.post(`${API_BASE}/generate/report`, data, {
+    timeout: 120000  // AI调用需要更长超时时间（120秒）
+  })
+  return res.data
+}
+
+/**
+ * 使用AI生成报告内容（预览模式，用于创建报告时）
+ */
+export async function generateReportContentPreview(
+  data: ReportAIPreviewGenerateRequest
+): Promise<ReportAIGenerateResponse> {
+  const res: any = await request.post(`${API_BASE}/generate/preview`, data, {
+    timeout: 120000  // AI调用需要更长超时时间（120秒）
+  })
   return res.data
 }

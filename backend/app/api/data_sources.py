@@ -79,6 +79,29 @@ def create_data_source(
     }
 
 
+@router.get("/{data_source_id}/tables", response_model=dict)
+def get_data_source_tables(
+    data_source_id: int,
+    db: Session = Depends(get_db),
+):
+    """获取数据源的所有表，按类型分类（事实表/维表）"""
+    tables = DataSourceService.get_tables(db=db, data_source_id=data_source_id)
+    
+    # 分类返回
+    fact_tables = [t["name"] for t in tables if t["table_type"] == "fact"]
+    dimension_tables = [t["name"] for t in tables if t["table_type"] == "dimension"]
+    
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "fact_tables": fact_tables,
+            "dimension_tables": dimension_tables,
+            "all_tables": [t["name"] for t in tables]
+        }
+    }
+
+
 @router.get("/{data_source_id}", response_model=dict)
 def get_data_source(
     data_source_id: int,

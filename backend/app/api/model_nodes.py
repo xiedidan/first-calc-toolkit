@@ -537,3 +537,96 @@ def _get_sequence_name(db: Session, node: ModelNode, version_id: int) -> str:
             return parent.name
         current = parent
     return "未知序列"
+
+
+def _get_full_hierarchy_path_with_sort_key(db: Session, node: ModelNode) -> tuple:
+    """获取节点的完整层级路径和排序键（序列-一级维度-二级维度...）
+    
+    返回: (层级路径字符串, 排序键列表)
+    排序键是从根到叶子的sort_order列表，用于保持与树形结构一致的顺序
+    
+    树结构示例：全院业务价值(根) → 医生业务价值(序列) → 门诊(一级) → 挂号(二级/叶子)
+    期望输出：医生业务价值 - 门诊 - 挂号
+    """
+    path_parts = []
+    node_types = []
+    sort_keys = []
+    current = node
+    
+    # 向上遍历收集所有祖先节点名称、类型和排序键
+    while current:
+        path_parts.append(current.name)
+        node_types.append(current.node_type)
+        sort_keys.append(current.sort_order or 0)
+        if current.parent_id:
+            current = db.query(ModelNode).filter(ModelNode.id == current.parent_id).first()
+        else:
+            break
+    
+    # 反转路径、类型和排序键，从根到叶子
+    path_parts.reverse()
+    node_types.reverse()
+    sort_keys.reverse()
+    
+    # 找到第一个序列节点的位置，从序列开始构建路径
+    # 跳过根节点（通常是node_type为None或第一个非序列节点）
+    start_idx = 0
+    for i, nt in enumerate(node_types):
+        if nt == 'sequence':
+            start_idx = i
+            break
+    
+    # 从序列节点开始构建路径
+    if start_idx < len(path_parts):
+        hierarchy_path = " - ".join(path_parts[start_idx:])
+    else:
+        hierarchy_path = path_parts[-1] if path_parts else ""
+    
+    return hierarchy_path, sort_keys
+
+
+@router.get("/version/{version_id}/leaf-dimensions")
+def get_leaf_dimensions(
+    version_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取指定版本中所有叶子维度（用于学科规则选择）
+    
+    只返回末级维度节点，按树形结构的深度优先遍历顺序排序
+    """
+    # 验证版本是否存在且属于当前医疗机构
+    query = db.query(ModelVersion).filter(ModelVersion.id == version_id)
+    query = apply_hospital_filter(query, ModelVersion, required=True)
+    version = query.first()
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="模型版本不存在或不属于当前医疗机构"
+        )
+    
+    # 查找所有叶子维度节点（末级维度）
+    leaf_nodes = db.query(ModelNode).filter(
+        ModelNode.version_id == version_id,
+        ModelNode.is_leaf == True,
+        ModelNode.node_type == 'dimension'
+    ).all()
+    
+    # 构建返回结果，包含完整层级路径和排序键
+    result_with_sort = []
+    for node in leaf_nodes:
+        hierarchy_path, sort_keys = _get_full_hierarchy_path_with_sort_key(db, node)
+        result_with_sort.append({
+            "id": node.id,
+            "name": hierarchy_path,
+            "code": node.code,
+            "sort_keys": sort_keys
+        })
+    
+    # 按排序键排序，保持与模型版本管理中树形结构一致的顺序
+    result_with_sort.sort(key=lambda x: x["sort_keys"])
+    
+    # 移除排序键，只返回需要的字段
+    result = [{"id": r["id"], "name": r["name"], "code": r["code"]} for r in result_with_sort]
+    
+    return {"total": len(result), "items": result}
