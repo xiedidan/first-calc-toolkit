@@ -148,6 +148,35 @@ DEFAULT_MODULES: List[Dict[str, Any]] = [
 如果找到多个相关指标，请全部列出。如果没有找到匹配的指标，请说明并建议可能的替代搜索词。""",
     },
     {
+        "module_code": PromptModuleCode.QUERY_KEYWORD,
+        "module_name": "智能问数-指标关键字提取",
+        "description": "用于从用户自然语言查询中提取指标搜索关键词，提高指标口径查询的准确性",
+        "temperature": 0.1,
+        "placeholders": [
+            {"name": "user_query", "description": "用户查询内容"},
+        ],
+        "system_prompt": """你是一个关键词提取专家。你的任务是从用户的自然语言查询中提取用于搜索指标的关键词。
+
+要求：
+1. 提取与指标名称相关的核心词汇
+2. 去除无关的修饰词（如"相关"、"有哪些"、"是什么"等）
+3. 保留专业术语和业务词汇
+4. 返回1-3个最相关的关键词
+5. 必须返回JSON格式""",
+        "user_prompt": """请从以下用户查询中提取指标搜索关键词：
+
+用户查询：{user_query}
+
+请返回JSON格式：
+{{"keywords": ["关键词1", "关键词2"]}}
+
+注意：
+- 只提取与指标名称相关的核心词汇
+- 去除"相关"、"有哪些"、"是什么"、"指标"等无关词
+- 如果查询本身就是关键词，直接返回
+- 最多返回3个关键词""",
+    },
+    {
         "module_code": PromptModuleCode.QUERY_DATA,
         "module_name": "智能问数-数据查询生成",
         "description": "用于智能问数系统中的数据智能查询功能，将自然语言转换为SQL查询",
@@ -228,22 +257,21 @@ class AIPromptModuleService:
         确保指定医疗机构的提示词模块已初始化
         如果模块不存在，则创建默认配置
         """
-        # 检查是否已有模块
-        existing_count = db.query(AIPromptModule).filter(
-            AIPromptModule.hospital_id == hospital_id
-        ).count()
-        
-        if existing_count >= len(DEFAULT_MODULES):
-            return  # 已初始化
-        
         # 获取已存在的模块代码
         existing_codes = set(
-            code[0] for code in db.query(AIPromptModule.module_code).filter(
-                AIPromptModule.hospital_id == hospital_id
-            ).all()
+            code[0]
+            for code in db.query(AIPromptModule.module_code)
+            .filter(AIPromptModule.hospital_id == hospital_id)
+            .all()
         )
         
+        # 检查是否所有模块都已存在
+        default_codes = set(m["module_code"] for m in DEFAULT_MODULES)
+        if existing_codes >= default_codes:
+            return  # 所有模块都已初始化
+        
         # 创建缺失的模块
+        created_count = 0
         for module_config in DEFAULT_MODULES:
             if module_config["module_code"] not in existing_codes:
                 module = AIPromptModule(
@@ -257,9 +285,13 @@ class AIPromptModuleService:
                     user_prompt=module_config["user_prompt"],
                 )
                 db.add(module)
-                logger.info(f"初始化提示词模块: {module_config['module_code']} for hospital_id={hospital_id}")
+                created_count += 1
+                logger.info(
+                    f"初始化提示词模块: {module_config['module_code']} for hospital_id={hospital_id}"
+                )
         
-        db.commit()
+        if created_count > 0:
+            db.commit()
     
     @staticmethod
     def get_module_config(

@@ -675,16 +675,17 @@ const moduleGroups = computed(() => {
     },
     {
       name: '智能问数系统',
-      codes: [PromptModuleCode.QUERY_CALIBER, PromptModuleCode.QUERY_DATA, PromptModuleCode.QUERY_SQL],
+      codes: [PromptModuleCode.QUERY_KEYWORD, PromptModuleCode.QUERY_CALIBER, PromptModuleCode.QUERY_DATA, PromptModuleCode.QUERY_SQL],
       modules: [] as AIPromptModule[],
     },
   ]
 
-  for (const mod of modules.value) {
-    for (const group of groups) {
-      if (group.codes.includes(mod.module_code as any)) {
+  // 按 codes 数组顺序添加模块
+  for (const group of groups) {
+    for (const code of group.codes) {
+      const mod = modules.value.find(m => m.module_code === code)
+      if (mod) {
         group.modules.push(mod)
-        break
       }
     }
   }

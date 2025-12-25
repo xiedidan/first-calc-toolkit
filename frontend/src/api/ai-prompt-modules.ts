@@ -71,6 +71,8 @@ export const PromptModuleCode = {
   QUERY_DATA: 'query_data',
   /** 智能问数系统-SQL代码编写 */
   QUERY_SQL: 'query_sql',
+  /** 智能问数系统-指标关键字提取 */
+  QUERY_KEYWORD: 'query_keyword',
 } as const
 
 export type PromptModuleCodeType = typeof PromptModuleCode[keyof typeof PromptModuleCode]
@@ -87,7 +89,7 @@ export const ModuleGroups = [
   },
   {
     name: '智能问数系统',
-    modules: [PromptModuleCode.QUERY_CALIBER, PromptModuleCode.QUERY_DATA, PromptModuleCode.QUERY_SQL],
+    modules: [PromptModuleCode.QUERY_KEYWORD, PromptModuleCode.QUERY_CALIBER, PromptModuleCode.QUERY_DATA, PromptModuleCode.QUERY_SQL],
   },
 ]
 

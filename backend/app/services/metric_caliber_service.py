@@ -375,6 +375,169 @@ class MetricCaliberService:
         return suggestions[:5]
     
     @staticmethod
+    def extract_keywords_with_ai(
+        db: Session,
+        hospital_id: int,
+        user_query: str,
+    ) -> List[str]:
+        """
+        使用AI从用户查询中提取搜索关键词
+        
+        Args:
+            db: 数据库会话
+            hospital_id: 医疗机构ID
+            user_query: 用户查询内容
+            
+        Returns:
+            提取的关键词列表，如果AI不可用则返回空列表
+        """
+        # 检查关键词提取模块是否已配置
+        is_ready, _ = AIPromptModuleService.check_module_ready(
+            db, hospital_id, PromptModuleCode.QUERY_KEYWORD
+        )
+        if not is_ready:
+            logger.debug(f"关键词提取模块未配置，跳过AI提取: hospital_id={hospital_id}")
+            return []
+        
+        # 获取模块配置
+        module = AIPromptModuleService.get_module_config(
+            db, hospital_id, PromptModuleCode.QUERY_KEYWORD
+        )
+        if not module:
+            return []
+        
+        # 获取AI接口配置
+        ai_interface = db.query(AIInterface).filter(
+            AIInterface.id == module.ai_interface_id
+        ).first()
+        if not ai_interface:
+            return []
+        
+        try:
+            # 解密API密钥
+            api_key = decrypt_api_key(ai_interface.api_key_encrypted)
+            
+            # 渲染提示词
+            user_prompt = module.user_prompt.replace("{user_query}", user_query)
+            system_prompt = module.system_prompt or ""
+            
+            # 调用AI
+            ai_response = call_ai_text_generation(
+                api_endpoint=ai_interface.api_endpoint,
+                api_key=api_key,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                model_name=ai_interface.model_name,
+                temperature=module.temperature,
+                timeout=30.0,  # 关键词提取应该很快
+            )
+            
+            # 解析JSON响应
+            # 尝试从响应中提取JSON
+            response_text = ai_response.strip()
+            
+            # 处理可能的markdown代码块
+            if "```json" in response_text:
+                start = response_text.find("```json") + 7
+                end = response_text.find("```", start)
+                response_text = response_text[start:end].strip()
+            elif "```" in response_text:
+                start = response_text.find("```") + 3
+                end = response_text.find("```", start)
+                response_text = response_text[start:end].strip()
+            
+            result = json.loads(response_text)
+            keywords = result.get("keywords", [])
+            
+            if keywords:
+                logger.info(f"AI关键词提取成功: query='{user_query}' -> keywords={keywords}")
+                return keywords[:3]  # 最多返回3个关键词
+            
+            return []
+            
+        except json.JSONDecodeError as e:
+            logger.warning(f"AI关键词提取响应解析失败: {str(e)}, response={ai_response[:200] if ai_response else 'empty'}")
+            return []
+        except (AIConnectionError, AIResponseError, AIRateLimitError) as e:
+            logger.warning(f"AI关键词提取调用失败: {str(e)}")
+            return []
+        except Exception as e:
+            logger.warning(f"AI关键词提取异常: {str(e)}")
+            return []
+    
+    @staticmethod
+    def smart_search_metrics(
+        db: Session,
+        hospital_id: int,
+        user_query: str,
+        limit: int = 20,
+    ) -> Tuple[List[MetricCaliberResult], List[str], str]:
+        """
+        智能搜索指标（先用AI提取关键词，再用关键词搜索）
+        
+        流程：
+        1. 先尝试用AI提取关键词
+        2. 如果提取成功，用关键词搜索
+        3. 如果AI不可用或提取失败，回退到原始查询直接搜索
+        
+        Args:
+            db: 数据库会话
+            hospital_id: 医疗机构ID
+            user_query: 用户查询内容
+            limit: 返回结果数量限制
+            
+        Returns:
+            (搜索结果列表, 使用的关键词列表, 原始查询)
+        """
+        used_keywords = []
+        
+        # 1. 先尝试用AI提取关键词
+        extracted_keywords = MetricCaliberService.extract_keywords_with_ai(
+            db, hospital_id, user_query
+        )
+        
+        if extracted_keywords:
+            # 用提取的关键词逐个搜索，合并结果
+            all_results = []
+            seen_ids = set()
+            
+            for keyword in extracted_keywords:
+                keyword_results = MetricCaliberService.search_metrics(
+                    db, hospital_id, keyword, limit
+                )
+                for r in keyword_results:
+                    if r.metric_id not in seen_ids:
+                        all_results.append(r)
+                        seen_ids.add(r.metric_id)
+                
+                if keyword_results:
+                    used_keywords.append(keyword)
+            
+            if all_results:
+                logger.info(f"智能搜索成功: query='{user_query}' -> keywords={used_keywords}, found={len(all_results)}")
+                return all_results[:limit], used_keywords, user_query
+            
+            # AI提取了关键词但搜索无结果，记录使用的关键词
+            if not used_keywords:
+                used_keywords = extracted_keywords
+        
+        # 2. AI不可用或关键词搜索无结果，回退到原始查询直接搜索
+        results = MetricCaliberService.search_metrics(
+            db, hospital_id, user_query, limit
+        )
+        
+        if results:
+            logger.info(f"直接搜索成功: query='{user_query}', found={len(results)}")
+            # 如果之前AI提取了关键词但没搜到，这里用原始查询搜到了
+            if used_keywords:
+                # 保留AI提取的关键词信息，但标记是用原始查询搜到的
+                return results, [user_query], user_query
+            return results, [user_query], user_query
+        
+        # 3. 都没有结果
+        return [], used_keywords or [user_query], user_query
+    
+    @staticmethod
     def query_with_ai(
         db: Session,
         hospital_id: int,

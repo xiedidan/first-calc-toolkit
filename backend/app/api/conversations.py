@@ -503,22 +503,30 @@ def _handle_caliber_query(
     """
     处理指标口径查询
     
-    直接在指标资产中搜索，不依赖 AI
+    使用智能搜索：先直接搜索，无结果时尝试AI提取关键词再搜索
     需求 3.1, 3.2, 3.4
     """
     try:
-        # 直接在指标资产中搜索
-        search_results = MetricCaliberService.search_metrics(
+        # 使用智能搜索（支持AI关键词提取）
+        search_results, used_keywords, original_query = MetricCaliberService.smart_search_metrics(
             db=db,
             hospital_id=hospital_id,
-            keyword=user_content,
+            user_query=user_content,
             limit=20,
         )
         
         if search_results:
             # 构建友好的响应
-            response_parts = [f"## 指标口径查询结果\n"]
-            response_parts.append(f"查询关键词：**{user_content}**\n")
+            response_parts = ["## 指标口径查询结果\n"]
+            
+            # 显示查询信息
+            if used_keywords and used_keywords != [original_query]:
+                # AI提取了关键词
+                response_parts.append(f"您的问题：**{original_query}**\n")
+                response_parts.append(f"智能提取关键词：**{', '.join(used_keywords)}**\n")
+            else:
+                response_parts.append(f"查询关键词：**{original_query}**\n")
+            
             response_parts.append(f"找到 **{len(search_results)}** 个相关指标：\n")
             
             # 使用详细列表格式展示
@@ -527,7 +535,8 @@ def _handle_caliber_query(
             response = "\n".join(response_parts)
             
             metadata = {
-                "query": user_content,
+                "query": original_query,
+                "used_keywords": used_keywords,
                 "result_count": len(search_results),
                 "metrics": [r.to_dict() for r in search_results],
             }
@@ -540,8 +549,12 @@ def _handle_caliber_query(
                 original_keyword=user_content,
             )
             
-            response_parts = [f"## 指标口径查询结果\n"]
-            response_parts.append(f"查询关键词：**{user_content}**\n")
+            response_parts = ["## 指标口径查询结果\n"]
+            response_parts.append(f"您的问题：**{user_content}**\n")
+            
+            if used_keywords and used_keywords != [user_content]:
+                response_parts.append(f"智能提取关键词：**{', '.join(used_keywords)}**\n")
+            
             response_parts.append("未找到匹配的指标。\n")
             
             if suggestions:
@@ -555,7 +568,11 @@ def _handle_caliber_query(
                 response_parts.append("- 使用指标的中文名称进行搜索")
             
             response = "\n".join(response_parts)
-            return response, ContentType.TEXT, {"query": user_content, "result_count": 0}
+            return response, ContentType.TEXT, {
+                "query": user_content,
+                "used_keywords": used_keywords,
+                "result_count": 0
+            }
             
     except Exception as e:
         logger.error(f"指标口径查询服务错误: {str(e)}", exc_info=True)

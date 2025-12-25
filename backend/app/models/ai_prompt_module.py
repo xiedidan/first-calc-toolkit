@@ -20,6 +20,7 @@ class PromptModuleCode:
     
     # 智能问数系统
     QUERY_CALIBER = "query_caliber"      # 指标口径查询
+    QUERY_KEYWORD = "query_keyword"      # 指标关键字提取
     QUERY_DATA = "query_data"            # 查询数据生成
     QUERY_SQL = "query_sql"              # SQL代码编写
 

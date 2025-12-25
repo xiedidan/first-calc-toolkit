@@ -605,7 +605,8 @@ def call_ai_text_generation(
     max_retries: int = 3,
     retry_delay: float = 1.0,
     timeout: float = 60.0,
-    model_name: str = "deepseek-chat"
+    model_name: str = "deepseek-chat",
+    temperature: float = 0.7
 ) -> str:
     """
     调用AI接口生成文本内容（用于报告生成等场景）
@@ -619,6 +620,7 @@ def call_ai_text_generation(
         retry_delay: 重试延迟（秒）
         timeout: 请求超时时间（秒）
         model_name: AI模型名称
+        temperature: 温度参数（0-2，越低越确定，越高越随机）
     
     Returns:
         生成的文本内容
@@ -637,7 +639,7 @@ def call_ai_text_generation(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ],
-        temperature=0.7,  # 文本生成使用稍高的温度以增加创造性
+        temperature=temperature,
         max_retries=max_retries,
         retry_delay=retry_delay,
         timeout=timeout

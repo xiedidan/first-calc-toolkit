@@ -493,12 +493,40 @@ onMounted(() => { loadGroups(); loadConversations() })
 </script>
 
 <style scoped>
-.smart-data-qa-container { display: flex; gap: 20px; height: calc(100vh - 140px); padding: 0; }
-.sidebar-panel { width: 320px; flex-shrink: 0; }
-.sidebar-card { height: 100%; display: flex; flex-direction: column; }
-.sidebar-card :deep(.el-card__body) { flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 0 20px 20px; }
+.smart-data-qa-container {
+  display: flex;
+  gap: 16px;
+  height: 100%;
+  padding: 0;
+}
+
+.sidebar-panel {
+  width: 320px;
+  flex-shrink: 0;
+}
+
+.main-panel {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-card,
+.main-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-card :deep(.el-card__body),
+.main-card :deep(.el-card__body) {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 .card-header { display: flex; justify-content: space-between; align-items: center; }
-.sidebar-toolbar { display: flex; gap: 8px; margin-top: 8px; margin-bottom: 16px; }
+.sidebar-toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
 .sidebar-toolbar .el-input { flex: 1; }
 .conversation-list { flex: 1; overflow-y: auto; }
 .conversation-group { margin-bottom: 8px; }
@@ -520,11 +548,8 @@ onMounted(() => { loadGroups(); loadConversations() })
 .conv-info { flex: 1; min-width: 0; }
 .conv-title { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .conv-meta { margin-top: 4px; }
-.main-panel { flex: 1; min-width: 0; }
-.main-card { height: 100%; display: flex; flex-direction: column; }
-.main-card :deep(.el-card__body) { flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 0; }
 .empty-state { flex: 1; display: flex; align-items: center; justify-content: center; }
-.conversation-header { padding: 16px 20px; border-bottom: 1px solid #ebeef5; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+.conversation-header { padding: 16px 20px; border-bottom: 1px solid #ebeef5; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; flex-shrink: 0; }
 .title-section { display: flex; align-items: center; }
 .conv-title-text { margin: 0; font-size: 16px; font-weight: normal; display: flex; align-items: center; gap: 8px; color: #303133; }
 .edit-icon { color: #909399; cursor: pointer; font-size: 14px; }
@@ -556,7 +581,7 @@ onMounted(() => { loadGroups(); loadConversations() })
 .chart-placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 200px; color: #909399; background: #fafafa; border-radius: 8px; }
 .error-content { max-width: 100%; }
 .loading-indicator { display: flex; align-items: center; gap: 8px; color: #909399; }
-.input-container { padding: 16px 20px; border-top: 1px solid #ebeef5; }
+.input-container { padding: 16px 20px; border-top: 1px solid #ebeef5; flex-shrink: 0; }
 .input-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
 .input-hint { font-size: 12px; color: #909399; }
 .ungrouped .group-header { background: transparent; border: 1px dashed #dcdfe6; }
