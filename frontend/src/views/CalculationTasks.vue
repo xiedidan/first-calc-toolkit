@@ -20,6 +20,12 @@
             {{ row.workflow_name || '-' }}
           </template>
         </el-table-column>
+        <el-table-column label="批次" width="240">
+          <template #default="{ row }">
+            <span v-if="row.batch_id" class="batch-id">{{ row.batch_id }}</span>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="状态" width="120">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)">
@@ -501,17 +507,37 @@ const showCreateDialog = async () => {
     taskForm.period = ''
   }
   
-  // 如果还没加载过 workflows，则加载
+  // 确保 workflows 已加载
   if (workflows.value.length === 0) {
-    loadWorkflows()
+    await loadWorkflows()
   }
   if (departments.value.length === 0) {
     loadDepartments()
   }
+  
+  // 默认选中最新的模型版本（按 created_at 降序，取第一个）
+  if (versions.value.length > 0) {
+    const sortedVersions = [...versions.value].sort((a, b) => 
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )
+    taskForm.model_version_id = sortedVersions[0].id
+    
+    // 默认选中该版本下最新的计算流程
+    const versionWorkflows = workflows.value
+      .filter(w => w.version_id === taskForm.model_version_id)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    if (versionWorkflows.length > 0) {
+      taskForm.workflow_id = versionWorkflows[0].id
+    }
+  }
 }
 
 const onVersionChange = () => {
-  taskForm.workflow_id = null
+  // 切换版本时，自动选中该版本下最新的计算流程
+  const versionWorkflows = workflows.value
+    .filter(w => w.version_id === taskForm.model_version_id)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  taskForm.workflow_id = versionWorkflows.length > 0 ? versionWorkflows[0].id : null
 }
 
 // 计算环比月份（上月）
@@ -531,6 +557,11 @@ const getYoyPeriod = (period: string) => {
   return `${year - 1}-${String(month).padStart(2, '0')}`
 }
 
+// 生成批次ID
+const generateBatchId = () => {
+  return `batch-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`
+}
+
 const createTask = async () => {
   if (!taskFormRef.value) return
   
@@ -539,11 +570,15 @@ const createTask = async () => {
     
     submitting.value = true
     try {
+      // 生成批次ID，同一次创建的所有任务共享同一个批次ID
+      const batchId = generateBatchId()
+      
       const baseParams = {
         model_version_id: taskForm.model_version_id!,
         workflow_id: taskForm.workflow_id || undefined,
         department_ids: taskForm.department_ids,
-        description: taskForm.description
+        description: taskForm.description,
+        batch_id: batchId  // 所有任务使用同一个批次ID
       }
       
       let taskCount = 0
@@ -607,7 +642,7 @@ const createTask = async () => {
         }
       }
       
-      ElMessage.success(`已创建 ${taskCount} 个计算任务`)
+      ElMessage.success(`已创建 ${taskCount} 个计算任务（批次: ${batchId.substring(0, 16)}...）`)
       createDialogVisible.value = false
     } catch (error: any) {
       ElMessage.error(error.response?.data?.detail || '创建任务失败')

@@ -321,3 +321,14 @@ export function getImportInfo(id: number) {
     method: 'get'
   })
 }
+
+/**
+ * 导出模型版本结构到Excel
+ */
+export function exportModelVersion(id: number) {
+  return request({
+    url: `/model-versions/export/${id}`,
+    method: 'get',
+    responseType: 'blob'
+  })
+}

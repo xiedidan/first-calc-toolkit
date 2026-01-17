@@ -1,0 +1,10 @@
+﻿psql.exe : ERROR:  invalid byte sequence for encoding "UTF8": 0xbc
+所在位置 行:1 字符: 31
++ ... sPgSql123'; & "C:\software\PostgreSQL\18\bin\psql.exe" -h 47.108.227
+. ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~
+    + CategoryInfo          : NotSpecified: (ERROR:  invalid...ng "UTF8": 
+    0xbc:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

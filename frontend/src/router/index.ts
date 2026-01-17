@@ -59,6 +59,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '成本基准管理' }
       },
       {
+        path: '/inclusive-fees',
+        name: 'InclusiveFees',
+        component: () => import('@/views/InclusiveFees.vue'),
+        meta: { title: '内含收费管理' }
+      },
+      {
         path: '/discipline-rules',
         name: 'DisciplineRules',
         component: () => import('@/views/DisciplineRules.vue'),

@@ -5,7 +5,52 @@
 </template>
 
 <script setup lang="ts">
-// 应用根组件
+import { onMounted, onUnmounted } from 'vue'
+
+// 全局滚轮事件处理：让表格区域的垂直滚轮事件穿透到正确的滚动容器
+const handleTableWheel = (e: WheelEvent) => {
+  const target = e.target as HTMLElement
+  
+  // 检查事件是否来自表格内部
+  const table = target.closest('.el-table')
+  if (!table) return
+  
+  // 检查表格是否有设置 max-height（需要内部滚动的表格）
+  const tableWrapper = table.querySelector('.el-table__body-wrapper') as HTMLElement
+  if (tableWrapper) {
+    const maxHeight = tableWrapper.style.maxHeight || 
+                      window.getComputedStyle(tableWrapper).maxHeight
+    if (maxHeight && maxHeight !== 'none') {
+      // 有 max-height 的表格，让它自己处理滚动
+      return
+    }
+  }
+  
+  // 检查是否在对话框内
+  const dialog = target.closest('.el-dialog')
+  if (dialog) {
+    // 对话框内的表格，滚动对话框的 body
+    const dialogBody = dialog.querySelector('.el-dialog__body') as HTMLElement
+    if (dialogBody) {
+      dialogBody.scrollTop += e.deltaY
+    }
+    return
+  }
+  
+  // 页面上的表格，滚动 layout-main
+  const scrollContainer = document.querySelector('.layout-main') as HTMLElement
+  if (scrollContainer) {
+    scrollContainer.scrollTop += e.deltaY
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('wheel', handleTableWheel, { passive: true })
+})
+
+onUnmounted(() => {
+  document.removeEventListener('wheel', handleTableWheel)
+})
 </script>
 
 <style>
@@ -116,6 +161,44 @@ html {
 .el-table th.el-table__cell,
 .el-table td.el-table__cell {
   padding: 6px 0;
+}
+
+/* 修复表格区域鼠标滚轮无法滚动页面的问题 */
+/* Element Plus 表格默认会捕获滚轮事件用于水平滚动，导致页面无法垂直滚动 */
+/* 解决方案：只对页面上的表格（非对话框内）应用 overflow 修复 */
+
+/* 页面上的表格（排除对话框内的表格）：保留横向滚动，禁用纵向滚动 */
+.layout-main .el-table .el-table__body-wrapper {
+  overflow-x: auto !important;
+  overflow-y: visible !important;
+}
+
+.layout-main .el-table__inner-wrapper {
+  overflow-x: auto !important;
+  overflow-y: visible !important;
+}
+
+.layout-main .el-table .el-scrollbar__wrap {
+  overflow-x: auto !important;
+  overflow-y: visible !important;
+}
+
+/* 修复表格固定列导致页面无法滚动的问题 */
+/* 只对页面上的表格应用 pointer-events 穿透 */
+.layout-main .el-table__fixed,
+.layout-main .el-table__fixed-right {
+  pointer-events: none;
+}
+.layout-main .el-table__fixed *,
+.layout-main .el-table__fixed-right * {
+  pointer-events: auto;
+}
+
+/* 页面上表格固定列的滚动条也保留横向滚动 */
+.layout-main .el-table__fixed .el-scrollbar__wrap,
+.layout-main .el-table__fixed-right .el-scrollbar__wrap {
+  overflow-x: auto !important;
+  overflow-y: visible !important;
 }
 
 /* 表单项间距更紧凑 */

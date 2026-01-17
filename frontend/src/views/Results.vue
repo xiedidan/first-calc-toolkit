@@ -5,6 +5,7 @@
         <div class="card-header">
           <span>业务价值报表</span>
           <div class="header-actions">
+            <el-button type="success" @click="showBatchExportDialog">导出批次报表</el-button>
             <el-button type="primary" @click="exportAllReports" :loading="exporting">导出业务价值报表</el-button>
           </div>
         </div>
@@ -20,6 +21,7 @@
               placeholder="选择月份"
               format="YYYY-MM"
               value-format="YYYY-MM"
+              style="width: 140px"
               @change="onPeriodChange"
             />
           </el-form-item>
@@ -68,6 +70,7 @@
               placeholder="上月"
               format="YYYY-MM"
               value-format="YYYY-MM"
+              style="width: 140px"
               @change="onMomPeriodChange"
             />
           </el-form-item>
@@ -114,6 +117,7 @@
               placeholder="去年同月"
               format="YYYY-MM"
               value-format="YYYY-MM"
+              style="width: 140px"
               @change="onYoyPeriodChange"
             />
           </el-form-item>
@@ -289,7 +293,7 @@
             <el-table-column prop="amount" label="业务价值金额" min-width="110" align="right">
               <template #default="{ row }">{{ formatNumber(row.amount) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="80" align="center" fixed="right">
+            <el-table-column label="操作" width="120" align="center" fixed="right">
               <template #default="{ row }">
                 <el-button
                   v-if="canDrillDown(row, 'doctor')"
@@ -299,6 +303,15 @@
                   @click="handleDrillDown(row)"
                 >
                   下钻
+                </el-button>
+                <el-button
+                  v-if="row.node_id || row.id"
+                  link
+                  type="success"
+                  size="small"
+                  @click="handleAnalysis(row)"
+                >
+                  分析
                 </el-button>
               </template>
             </el-table-column>
@@ -338,7 +351,7 @@
             <el-table-column prop="amount" label="业务价值金额" min-width="110" align="right">
               <template #default="{ row }">{{ formatNumber(row.amount) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="80" align="center" fixed="right">
+            <el-table-column label="操作" width="120" align="center" fixed="right">
               <template #default="{ row }">
                 <el-button
                   v-if="canDrillDown(row, 'nurse')"
@@ -348,6 +361,15 @@
                   @click="handleDrillDown(row)"
                 >
                   下钻
+                </el-button>
+                <el-button
+                  v-if="row.node_id || row.id"
+                  link
+                  type="success"
+                  size="small"
+                  @click="handleAnalysis(row)"
+                >
+                  分析
                 </el-button>
               </template>
             </el-table-column>
@@ -387,7 +409,7 @@
             <el-table-column prop="amount" label="业务价值金额" min-width="110" align="right">
               <template #default="{ row }">{{ formatNumber(row.amount) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="80" align="center" fixed="right">
+            <el-table-column label="操作" width="120" align="center" fixed="right">
               <template #default="{ row }">
                 <el-button
                   v-if="canDrillDown(row, 'tech')"
@@ -397,6 +419,15 @@
                   @click="handleDrillDown(row)"
                 >
                   下钻
+                </el-button>
+                <el-button
+                  v-if="row.node_id || row.id"
+                  link
+                  type="success"
+                  size="small"
+                  @click="handleAnalysis(row)"
+                >
+                  分析
                 </el-button>
               </template>
             </el-table-column>
@@ -445,7 +476,6 @@
                     </el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column prop="adjustment_reason" label="未调整原因" min-width="150" show-overflow-tooltip />
               </el-table>
             </el-tab-pane>
 
@@ -486,7 +516,6 @@
                     </el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column prop="adjustment_reason" label="未调整原因" min-width="150" show-overflow-tooltip />
               </el-table>
             </el-tab-pane>
 
@@ -527,7 +556,6 @@
                     </el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column prop="adjustment_reason" label="未调整原因" min-width="150" show-overflow-tooltip />
               </el-table>
             </el-tab-pane>
           </el-tabs>
@@ -607,6 +635,105 @@
         <el-button @click="drillDownVisible = false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <!-- 批次导出对话框 -->
+    <el-dialog
+      v-model="batchExportDialogVisible"
+      title="导出批次报表"
+      width="700px"
+      append-to-body
+    >
+      <div v-loading="loadingBatches">
+        <el-form label-width="100px">
+          <el-form-item label="选择批次">
+            <el-select
+              v-model="selectedBatchId"
+              placeholder="请选择要导出的批次"
+              style="width: 100%"
+              :loading="loadingBatches"
+              popper-class="batch-select-popper"
+            >
+              <el-option
+                v-for="batch in batchList"
+                :key="batch.batch_id"
+                :label="formatBatchLabel(batch)"
+                :value="batch.batch_id"
+              >
+                <div class="batch-option">
+                  <div class="batch-option-row">
+                    <span class="batch-option-label">批次号:</span>
+                    <span class="batch-option-id">{{ batch.batch_id }}</span>
+                    <span class="batch-option-divider">|</span>
+                    <span class="batch-option-label">创建:</span>
+                    <span class="batch-option-time">{{ formatBatchTime(batch.created_at) }}</span>
+                  </div>
+                  <div class="batch-option-row">
+                    <span class="batch-option-label">版本:</span>
+                    <span class="batch-option-version">{{ batch.model_version_name || '默认版本' }}</span>
+                    <span class="batch-option-divider">|</span>
+                    <span class="batch-option-label">月份:</span>
+                    <span class="batch-option-periods">{{ formatBatchPeriods(batch.periods) }}</span>
+                    <el-tag size="small" type="info" style="margin-left: 8px;">{{ batch.task_count }}个</el-tag>
+                  </div>
+                </div>
+              </el-option>
+            </el-select>
+          </el-form-item>
+          
+          <el-form-item v-if="selectedBatchInfo" label="批次详情">
+            <el-descriptions :column="1" border size="small">
+              <el-descriptions-item label="批次号">
+                <span style="font-family: monospace;">{{ selectedBatchInfo.batch_id }}</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="模型版本">{{ selectedBatchInfo.model_version_name || '默认版本' }}</el-descriptions-item>
+              <el-descriptions-item label="时间范围">
+                {{ formatBatchPeriods(selectedBatchInfo.periods) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="包含月份">
+                <el-tag 
+                  v-for="period in selectedBatchInfo.periods" 
+                  :key="period" 
+                  size="small" 
+                  style="margin-right: 5px; margin-bottom: 3px;"
+                >
+                  {{ period }}
+                </el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item label="任务数量">{{ selectedBatchInfo.task_count }} 个</el-descriptions-item>
+              <el-descriptions-item label="创建时间">{{ formatBatchTime(selectedBatchInfo.created_at) }}</el-descriptions-item>
+            </el-descriptions>
+          </el-form-item>
+        </el-form>
+        
+        <el-empty v-if="!loadingBatches && batchList.length === 0" description="暂无批次数据" />
+      </div>
+
+      <template #footer>
+        <el-button @click="batchExportDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="exportingBatch"
+          :disabled="!selectedBatchId"
+          @click="handleBatchExport"
+        >
+          导出
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 维度分析对话框 -->
+    <DimensionAnalysisModal
+      v-if="analysisContext"
+      v-model="analysisModalVisible"
+      :department-id="analysisContext.departmentId"
+      :department-code="analysisContext.departmentCode"
+      :department-name="analysisContext.departmentName"
+      :node-id="analysisContext.nodeId"
+      :node-code="analysisContext.nodeCode"
+      :node-name="analysisContext.nodeName"
+      :period="analysisContext.period"
+      :version-id="analysisContext.versionId"
+    />
   </div>
 </template>
 
@@ -618,6 +745,8 @@ import { getModelVersions } from '@/api/model'
 import { getSystemSettings } from '@/api/system-settings'
 import { getReferenceValuesByPeriod } from '@/api/reference-values'
 import { getDimensionDrillDownByTask, type DimensionDrillDownResponse } from '@/api/analysis-reports'
+import { getBatchList, exportBatchReports, type BatchInfo } from '@/api/calculation-tasks'
+import DimensionAnalysisModal from '@/components/DimensionAnalysisModal.vue'
 import request from '@/utils/request'
 
 const route = useRoute()
@@ -625,6 +754,7 @@ const route = useRoute()
 // 任务选项接口
 interface TaskOption {
   task_id: string
+  batch_id?: string  // 批次ID
   label: string
   period: string
   model_version_id: number
@@ -644,6 +774,13 @@ const detailDialogVisible = ref(false)
 const activeTab = ref('doctor')
 const orientationActiveTab = ref('doctor')
 
+// 批次导出相关
+const batchExportDialogVisible = ref(false)
+const batchList = ref<BatchInfo[]>([])
+const loadingBatches = ref(false)
+const selectedBatchId = ref<string | null>(null)
+const exportingBatch = ref(false)
+
 // 下钻相关
 const drillDownVisible = ref(false)
 const drillDownLoading = ref(false)
@@ -651,11 +788,25 @@ const drillDownData = ref<DimensionDrillDownResponse | null>(null)
 const drillDownCurrentPage = ref(1)
 const drillDownPageSize = ref(10)
 
+// 维度分析相关
+const analysisModalVisible = ref(false)
+const analysisContext = ref<{
+  departmentId: number
+  departmentCode: string
+  departmentName: string
+  nodeId: number
+  nodeCode: string
+  nodeName: string
+  period: string
+  versionId?: number
+} | null>(null)
+
 // 参考价值数据
 const referenceValues = ref<Record<string, any>>({})
 
 // 任务选择器相关
 const selectedTaskId = ref<string | null>(null)
+const selectedTaskBatchId = ref<string | null>(null)  // 当前选中任务的批次ID
 const availableTasks = ref<TaskOption[]>([])
 const loadingTasks = ref(false)
 
@@ -715,6 +866,12 @@ const yoyTaskPlaceholder = computed(() => {
   return '默认使用最新任务'
 })
 
+// 选中的批次信息
+const selectedBatchInfo = computed(() => {
+  if (!selectedBatchId.value) return null
+  return batchList.value.find(b => b.batch_id === selectedBatchId.value) || null
+})
+
 const filterForm = reactive({
   period: route.query.period as string || '',
   model_version_id: route.query.model_version_id ? Number(route.query.model_version_id) : null
@@ -768,6 +925,7 @@ const loadAvailableTasks = async () => {
       
       return {
         task_id: task.task_id,
+        batch_id: task.batch_id,  // 保存批次ID
         label: `${taskIdShort}... (${workflowName} - ${createdTime})`,
         period: task.period,
         model_version_id: task.model_version_id,
@@ -780,6 +938,7 @@ const loadAvailableTasks = async () => {
     // 自动选择最新的任务（第一个任务，因为后端已按创建时间倒序排序）
     if (availableTasks.value.length > 0 && !selectedTaskId.value) {
       selectedTaskId.value = availableTasks.value[0].task_id
+      selectedTaskBatchId.value = availableTasks.value[0].batch_id || null
     }
   } catch (error: any) {
     ElMessage.error('加载任务列表失败')
@@ -846,8 +1005,20 @@ const loadReferenceValues = async () => {
 // 处理任务选择变化
 const onTaskChange = (taskId: string | null) => {
   selectedTaskId.value = taskId
+  // 更新批次ID
   if (taskId) {
+    const selectedTask = availableTasks.value.find(t => t.task_id === taskId)
+    selectedTaskBatchId.value = selectedTask?.batch_id || null
     loadSummary()
+    // 重新加载环比和同比任务列表，以更新同批次标记和自动选择
+    if (compareForm.momPeriod) {
+      loadMomTasks()
+    }
+    if (compareForm.yoyPeriod) {
+      loadYoyTasks()
+    }
+  } else {
+    selectedTaskBatchId.value = null
   }
 }
 
@@ -927,9 +1098,13 @@ const loadMomTasks = async () => {
       const taskIdShort = task.task_id.substring(0, 8)
       const createdTime = new Date(task.created_at).toLocaleString('zh-CN')
       const workflowName = task.workflow_name || '默认流程'
+      // 同批次任务标记
+      const isSameBatch = selectedTaskBatchId.value && task.batch_id === selectedTaskBatchId.value
+      const batchLabel = isSameBatch ? ' [同批次]' : ''
       return {
         task_id: task.task_id,
-        label: `${taskIdShort}... (${workflowName} - ${createdTime})`,
+        batch_id: task.batch_id,
+        label: `${taskIdShort}... (${workflowName} - ${createdTime})${batchLabel}`,
         period: task.period,
         model_version_id: task.model_version_id,
         created_at: task.created_at,
@@ -937,9 +1112,18 @@ const loadMomTasks = async () => {
       }
     })
     
-    // 自动选择最新任务
+    // 自动选择任务：优先选择同批次任务，否则选择最新任务
     if (momTasks.value.length > 0) {
-      compareForm.momTaskId = momTasks.value[0].task_id
+      // 优先查找同批次任务
+      let selectedTask = null
+      if (selectedTaskBatchId.value) {
+        selectedTask = momTasks.value.find((t: TaskOption) => t.batch_id === selectedTaskBatchId.value)
+      }
+      // 如果没有同批次任务，选择最新任务（第一个）
+      if (!selectedTask) {
+        selectedTask = momTasks.value[0]
+      }
+      compareForm.momTaskId = selectedTask.task_id
       loadCompareData()
     } else {
       // 无可用任务，清空选择并提示
@@ -983,9 +1167,13 @@ const loadYoyTasks = async () => {
       const taskIdShort = task.task_id.substring(0, 8)
       const createdTime = new Date(task.created_at).toLocaleString('zh-CN')
       const workflowName = task.workflow_name || '默认流程'
+      // 同批次任务标记
+      const isSameBatch = selectedTaskBatchId.value && task.batch_id === selectedTaskBatchId.value
+      const batchLabel = isSameBatch ? ' [同批次]' : ''
       return {
         task_id: task.task_id,
-        label: `${taskIdShort}... (${workflowName} - ${createdTime})`,
+        batch_id: task.batch_id,
+        label: `${taskIdShort}... (${workflowName} - ${createdTime})${batchLabel}`,
         period: task.period,
         model_version_id: task.model_version_id,
         created_at: task.created_at,
@@ -993,9 +1181,18 @@ const loadYoyTasks = async () => {
       }
     })
     
-    // 自动选择最新任务
+    // 自动选择任务：优先选择同批次任务，否则选择最新任务
     if (yoyTasks.value.length > 0) {
-      compareForm.yoyTaskId = yoyTasks.value[0].task_id
+      // 优先查找同批次任务
+      let selectedTask = null
+      if (selectedTaskBatchId.value) {
+        selectedTask = yoyTasks.value.find((t: TaskOption) => t.batch_id === selectedTaskBatchId.value)
+      }
+      // 如果没有同批次任务，选择最新任务（第一个）
+      if (!selectedTask) {
+        selectedTask = yoyTasks.value[0]
+      }
+      compareForm.yoyTaskId = selectedTask.task_id
       loadCompareData()
     } else {
       // 无可用任务，清空选择并提示
@@ -1274,10 +1471,10 @@ const loadOrientationSummary = async (taskId: string, deptId: number) => {
   }
 }
 
-// 格式化值或显示"-"
+// 格式化值或显示"-"（业务价值使用4位小数）
 const formatValueOrDash = (value: any) => {
   if (value === '-' || value === null || value === undefined) return '-'
-  return formatNumber(value)
+  return formatBusinessValue(value)
 }
 
 // 护理序列中用charge_details计算的维度编码前缀（可下钻）
@@ -1369,6 +1566,51 @@ const handleDrillDown = async (row: any) => {
   } finally {
     drillDownLoading.value = false
   }
+}
+
+// 处理维度分析
+const handleAnalysis = (row: any) => {
+  console.log('handleAnalysis called with row:', row)
+  console.log('currentDepartment:', currentDepartment.value)
+  console.log('filterForm:', filterForm)
+  console.log('selectedTaskId:', selectedTaskId.value)
+  console.log('availableTasks:', availableTasks.value)
+  
+  if (!currentDepartment.value) {
+    ElMessage.warning('缺少科室信息')
+    return
+  }
+  
+  const nodeId = row.node_id || row.id
+  if (!nodeId) {
+    ElMessage.warning('缺少节点ID')
+    return
+  }
+  
+  // 优先从选中的任务获取 version_id，否则从 filterForm 获取
+  let versionId = filterForm.model_version_id
+  if (selectedTaskId.value) {
+    const selectedTask = availableTasks.value.find(t => t.task_id === selectedTaskId.value)
+    if (selectedTask) {
+      versionId = selectedTask.model_version_id
+    }
+  }
+  
+  // 使用 department_code（核算单元代码）作为学科规则匹配的科室代码
+  const context = {
+    departmentId: currentDepartment.value.department_id,
+    departmentCode: currentDepartment.value.department_code || '',
+    departmentName: currentDepartment.value.department_name,
+    nodeId: nodeId,
+    nodeCode: row.dimension_code || row.node_code || '',
+    nodeName: row.dimension_name || row.node_name || '',
+    period: filterForm.period,
+    versionId: versionId || undefined
+  }
+  console.log('analysisContext to set:', context)
+  
+  analysisContext.value = context
+  analysisModalVisible.value = true
 }
 
 // 判断是否有导向汇总数据
@@ -1520,6 +1762,15 @@ const formatNumber = (value: any) => {
   })
 }
 
+// 格式化业务价值（4位小数）
+const formatBusinessValue = (value: any) => {
+  if (value === null || value === undefined) return '-'
+  return Number(value).toLocaleString('zh-CN', {
+    minimumFractionDigits: 4,
+    maximumFractionDigits: 4
+  })
+}
+
 const formatPercent = (value: any) => {
   if (value === null || value === undefined) return '-'
   return `${Number(value).toFixed(2)}%`
@@ -1644,25 +1895,106 @@ onMounted(async () => {
     }
   }
 })
+
+// 批次导出相关方法
+const showBatchExportDialog = async () => {
+  batchExportDialogVisible.value = true
+  selectedBatchId.value = null
+  await loadBatchList()
+}
+
+const loadBatchList = async () => {
+  loadingBatches.value = true
+  try {
+    const res: any = await getBatchList({
+      model_version_id: filterForm.model_version_id || undefined,
+      page: 1,
+      size: 100
+    })
+    batchList.value = res.items || []
+  } catch (error: any) {
+    ElMessage.error('加载批次列表失败')
+    console.error('加载批次列表错误:', error)
+  } finally {
+    loadingBatches.value = false
+  }
+}
+
+const formatBatchLabel = (batch: BatchInfo) => {
+  const periodsStr = batch.periods.join(', ')
+  const createdTime = new Date(batch.created_at).toLocaleString('zh-CN')
+  const versionName = batch.model_version_name || '未知版本'
+  return `${periodsStr} (${versionName}, ${batch.task_count}个任务, ${createdTime})`
+}
+
+const formatBatchPeriods = (periods: string[]) => {
+  if (!periods || periods.length === 0) return '-'
+  if (periods.length === 1) return periods[0]
+  // 排序后取首尾
+  const sorted = [...periods].sort()
+  return `${sorted[0]} ~ ${sorted[sorted.length - 1]}`
+}
+
+const formatBatchTime = (dateStr: string) => {
+  if (!dateStr) return '-'
+  return new Date(dateStr).toLocaleString('zh-CN')
+}
+
+const handleBatchExport = async () => {
+  if (!selectedBatchId.value) {
+    ElMessage.warning('请选择要导出的批次')
+    return
+  }
+  
+  exportingBatch.value = true
+  try {
+    const response = await exportBatchReports(selectedBatchId.value)
+    
+    // 从响应头获取文件名
+    let filename = `批次报表_${selectedBatchId.value.slice(-8)}.zip`
+    const contentDisposition = response.headers?.['content-disposition']
+    if (contentDisposition && contentDisposition.includes("filename*=UTF-8''")) {
+      const filenameMatch = contentDisposition.split("filename*=UTF-8''")[1]
+      if (filenameMatch) {
+        filename = decodeURIComponent(filenameMatch)
+      }
+    }
+    
+    // 创建下载链接
+    const url = window.URL.createObjectURL(new Blob([response.data || response]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', filename)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    
+    ElMessage.success('导出成功')
+    batchExportDialogVisible.value = false
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || '导出失败')
+  } finally {
+    exportingBatch.value = false
+  }
+}
 </script>
 
 <style scoped>
 .results-container {
   padding: 0;
   width: 100%;
-  height: 100%;
+  box-sizing: border-box;
 }
 
 .results-container :deep(.el-card) {
   width: 100%;
-  height: 100%;
 }
 
 .results-container :deep(.el-card__body) {
-  height: calc(100% - 60px);
+  padding: 20px;
   display: flex;
   flex-direction: column;
-  overflow: auto;
 }
 
 .card-header {
@@ -1679,6 +2011,14 @@ onMounted(async () => {
 .filter-section {
   flex-shrink: 0;
   margin-bottom: 20px;
+}
+
+.filter-section :deep(.el-form-item) {
+  margin-bottom: 8px;
+}
+
+.filter-section :deep(.el-divider) {
+  margin: 12px 0 16px 0;
 }
 
 .filter-section :deep(.el-divider__text) {
@@ -1772,8 +2112,12 @@ onMounted(async () => {
   margin-bottom: 0;
 }
 
+.compare-form :deep(.el-form-item) {
+  margin-bottom: 8px;
+}
+
 .compare-form + .compare-form {
-  margin-top: 8px;
+  margin-top: 0;
 }
 
 .warning-select :deep(.el-input__inner::placeholder) {
@@ -1795,5 +2139,57 @@ onMounted(async () => {
 
 .ratio-down {
   color: #f56c6c;
+}
+
+/* 批次选项样式 */
+.batch-option {
+  padding: 4px 0;
+}
+
+.batch-option-row {
+  display: flex;
+  align-items: center;
+  line-height: 1.6;
+}
+
+.batch-option-label {
+  color: #909399;
+  font-size: 12px;
+  margin-right: 4px;
+}
+
+.batch-option-id {
+  font-family: monospace;
+  font-size: 12px;
+  color: #606266;
+}
+
+.batch-option-version {
+  color: #409eff;
+  font-weight: 500;
+}
+
+.batch-option-divider {
+  margin: 0 8px;
+  color: #dcdfe6;
+}
+
+.batch-option-periods {
+  color: #606266;
+}
+
+.batch-option-time {
+  color: #909399;
+  font-size: 12px;
+}
+</style>
+
+<!-- 非 scoped 样式，用于下拉菜单（渲染到 body 下） -->
+<style>
+.batch-select-popper .el-select-dropdown__item {
+  height: auto !important;
+  min-height: 50px;
+  padding: 8px 20px;
+  line-height: 1.5;
 }
 </style>

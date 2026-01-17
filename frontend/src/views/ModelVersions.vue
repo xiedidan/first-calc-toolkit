@@ -50,7 +50,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="创建时间" width="180" />
-        <el-table-column label="操作" width="500" fixed="right">
+        <el-table-column label="操作" width="550" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleEditStructure(row)">
               <el-icon><Edit /></el-icon>
@@ -59,6 +59,15 @@
             <el-button link type="info" @click="handleViewRules(row)">
               <el-icon><Document /></el-icon>
               查看规则
+            </el-button>
+            <el-button 
+              link 
+              type="success" 
+              @click="handleExport(row)"
+              :loading="exportingId === row.id"
+            >
+              <el-icon v-if="exportingId !== row.id"><Download /></el-icon>
+              导出
             </el-button>
             <el-button 
               link 
@@ -195,6 +204,7 @@ import {
   updateModelVersion,
   deleteModelVersion,
   activateModelVersion,
+  exportModelVersion,
   type ModelVersion
 } from '@/api/model'
 import ModelVersionImportDialog from '@/components/ModelVersionImportDialog.vue'
@@ -208,6 +218,9 @@ const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(20)
 const searchText = ref('')
+
+// 导出状态
+const exportingId = ref<number | null>(null)
 
 // 对话框
 const dialogVisible = ref(false)
@@ -367,6 +380,35 @@ const handleImportSuccess = (versionId: number) => {
   fetchData()
   // 可选：跳转到新版本的编辑页面
   // router.push({ name: 'ModelNodes', params: { versionId } })
+}
+
+// 导出
+const handleExport = async (row: ModelVersion) => {
+  exportingId.value = row.id
+  try {
+    const response = await exportModelVersion(row.id) as any
+    // 从响应头获取文件名，如果没有则使用默认名称
+    const filename = `评估模型_${row.name}_${row.version}.xlsx`
+    
+    // 创建下载链接
+    const blob = new Blob([response.data], { 
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    
+    ElMessage.success('导出成功')
+  } catch (error: any) {
+    ElMessage.error(error.message || '导出失败')
+  } finally {
+    exportingId.value = null
+  }
 }
 
 // 删除

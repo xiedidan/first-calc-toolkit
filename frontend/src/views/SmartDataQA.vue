@@ -200,6 +200,7 @@
                 @copy="handleCodeCopy"
                 @export="(format) => handleMessageExport(msg, format)"
                 @chart-click="handleChartClick"
+                @retry-direct="handleRetryDirect"
               />
               <div v-if="sending" class="message-item assistant loading">
                 <div class="message-avatar"><el-avatar :size="36" :icon="Monitor" style="background-color: #409eff" /></div>
@@ -286,7 +287,7 @@ import type { ChartType, ChartData, ChartConfig } from '@/components/ChartRender
 import ConversationMessage from '@/components/ConversationMessage.vue'
 import type { Message as ConversationMessageType } from '@/components/ConversationMessage.vue'
 import PromptEditModal from '@/components/PromptEditModal.vue'
-import { getConversations, createConversation, updateConversation, deleteConversation, getConversation, sendMessage } from '@/api/conversations'
+import { getConversations, createConversation, updateConversation, deleteConversation, getConversation, sendMessage, retryDirectSearch } from '@/api/conversations'
 import { getConversationGroups, createConversationGroup, updateConversationGroup, deleteConversationGroup, moveConversationsToGroup } from '@/api/conversation-groups'
 import { useUserStore } from '@/stores/user'
 
@@ -410,6 +411,24 @@ const handleMessageExport = async (msg: Message, format: 'markdown' | 'pdf' | 'e
   console.log('Export message fallback:', msg.id, format)
 }
 const handleChartClick = (params: any) => { console.log('Chart clicked:', params) }
+
+// 处理直接搜索（跳过AI关键词提取）
+const handleRetryDirect = async (query: string) => {
+  if (!currentConversation.value || sending.value) return
+  
+  sending.value = true
+  scrollToBottom()
+  
+  try {
+    const res = await retryDirectSearch(currentConversation.value.id, query) as any
+    if (res.data?.user_message) messages.value.push(res.data.user_message)
+    if (res.data?.assistant_message) messages.value.push(res.data.assistant_message)
+    scrollToBottom()
+  } catch (e: any) {
+    messages.value.push({ id: Date.now() + 1, role: 'assistant', content: e.message || '搜索失败，请重试', content_type: 'error', created_at: new Date().toISOString() })
+    scrollToBottom()
+  } finally { sending.value = false }
+}
 const handleDragStart = (event: DragEvent, conv: Conversation) => { draggedConversation = conv; if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move' }
 const handleDragOver = (event: DragEvent, groupId: number | null) => { 
   event.preventDefault()

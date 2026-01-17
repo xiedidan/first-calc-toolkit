@@ -141,7 +141,8 @@ detail_records AS (
             THEN anr.original_weight * la.adjustment_intensity
             ELSE NULL
         END as adjusted_weight,
-        (la.adjustment_intensity IS NOT NULL) as is_adjusted,
+        -- 只有当管控力度存在且不等于1时才算真正调整
+        (la.adjustment_intensity IS NOT NULL AND la.adjustment_intensity != 1) as is_adjusted,
         CASE 
             WHEN oratio.actual_value IS NULL THEN '缺少导向实际值'
             WHEN oratio.benchmark_value IS NULL THEN '缺少导向基准值'

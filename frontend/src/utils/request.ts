@@ -94,7 +94,10 @@ request.interceptors.response.use(
           }
           break
         case 404:
-          ElMessage.error(data.detail || '请求的资源不存在')
+          // 如果请求配置中设置了 silent404，则不显示错误提示
+          if (!(error.config as any)?.silent404) {
+            ElMessage.error(data.detail || '请求的资源不存在')
+          }
           break
         case 500:
           ElMessage.error('服务器错误，请稍后重试')

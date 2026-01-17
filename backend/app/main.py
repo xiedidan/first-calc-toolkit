@@ -124,7 +124,7 @@ async def health_check():
 
 
 # 导入路由
-from app.api import auth, users, roles, departments, dimension_items, charge_items, model_versions, model_nodes, calculation_workflows, calculation_steps, data_sources, system_settings, calculation_tasks, hospitals, data_templates, data_issues, orientation_rules, orientation_benchmarks, orientation_ladders, ai_config, ai_prompt_config, classification_tasks, classification_plans, cost_benchmarks, reference_values, analysis_reports, cost_reports, discipline_rules, ai_interfaces, ai_prompt_modules, metric_projects, metric_topics, metrics, conversation_groups, conversations
+from app.api import auth, users, roles, departments, dimension_items, charge_items, model_versions, model_nodes, calculation_workflows, calculation_steps, data_sources, system_settings, calculation_tasks, hospitals, data_templates, data_issues, orientation_rules, orientation_benchmarks, orientation_ladders, ai_config, ai_prompt_config, classification_tasks, classification_plans, cost_benchmarks, reference_values, analysis_reports, cost_reports, discipline_rules, ai_interfaces, ai_prompt_modules, metric_projects, metric_topics, metrics, conversation_groups, conversations, dimension_analyses, dim_inclusive_fees
 
 # 注册路由
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
@@ -162,3 +162,5 @@ app.include_router(metric_topics.router, prefix="/api/v1/metric-topics", tags=["
 app.include_router(metrics.router, prefix="/api/v1/metrics", tags=["指标管理"])
 app.include_router(conversation_groups.router, prefix="/api/v1/conversation-groups", tags=["对话分组管理"])
 app.include_router(conversations.router, prefix="/api/v1/conversations", tags=["对话管理"])
+app.include_router(dimension_analyses.router, prefix="/api/v1/dimension-analyses", tags=["维度分析"])
+app.include_router(dim_inclusive_fees.router, prefix="/api/v1/dim-inclusive-fees", tags=["内含式收费管理"])

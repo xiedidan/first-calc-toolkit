@@ -429,7 +429,7 @@ class MetricCaliberService:
                 user_prompt=user_prompt,
                 model_name=ai_interface.model_name,
                 temperature=module.temperature,
-                timeout=30.0,  # 关键词提取应该很快
+                timeout=60.0,  # 关键词提取应该较快
             )
             
             # 解析JSON响应
@@ -607,7 +607,7 @@ class MetricCaliberService:
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 model_name=ai_interface.model_name,
-                timeout=60.0,
+                timeout=120.0,
             )
             
             logger.info(f"AI指标口径查询成功: query='{user_query}', hospital_id={hospital_id}")

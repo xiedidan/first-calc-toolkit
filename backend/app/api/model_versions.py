@@ -2,7 +2,10 @@
 模型版本管理API
 """
 from typing import Optional
+from io import BytesIO
+from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_current_user
@@ -22,6 +25,7 @@ from app.utils.hospital_filter import (
     validate_hospital_access,
     set_hospital_id_for_create,
 )
+from app.services.model_version_export_service import ModelVersionExportService
 
 router = APIRouter()
 
@@ -131,6 +135,43 @@ def import_version(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"导入失败: {str(e)}"
         )
+
+
+# ==================== 模型版本导出API ====================
+
+@router.get("/export/{version_id}")
+def export_model_version(
+    version_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """导出模型版本结构到Excel"""
+    # 验证版本是否存在且属于当前医疗机构
+    query = db.query(ModelVersion).filter(ModelVersion.id == version_id)
+    query = apply_hospital_filter(query, ModelVersion, required=True)
+    version = query.first()
+    
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="模型版本不存在"
+        )
+    
+    # 导出Excel
+    export_service = ModelVersionExportService(db)
+    excel_buffer = export_service.export_to_excel(version_id)
+    
+    # 构建文件名
+    filename = f"评估模型_{version.name}_{version.version}.xlsx"
+    encoded_filename = quote(filename)
+    
+    return StreamingResponse(
+        excel_buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
+        }
+    )
 
 
 # ==================== 基础模型版本管理API ====================

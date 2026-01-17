@@ -15,7 +15,7 @@
       </div>
 
       <!-- 消息主体 -->
-      <div class="message-body">
+      <div class="message-body" :data-message-id="message.id">
         <!-- 文本内容 -->
         <div v-if="message.content_type === 'text'" class="text-content" v-html="formattedContent"></div>
 
@@ -136,7 +136,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   User,
@@ -213,6 +213,7 @@ const emit = defineEmits<{
   (e: 'copy', content: string): void
   (e: 'export', format: 'markdown' | 'pdf' | 'excel' | 'csv'): void
   (e: 'chart-click', params: any): void
+  (e: 'retry-direct', query: string): void
 }>()
 
 // 格式化时间
@@ -358,6 +359,37 @@ const handleExport = async (format: ExportFormat) => {
 const handleChartClick = (params: any) => {
   emit('chart-click', params)
 }
+
+// 消息体元素引用
+const messageBodyRef = ref<HTMLElement | null>(null)
+
+// 处理可点击查询的点击事件
+const handleClickableQueryClick = (event: Event) => {
+  const target = event.target as HTMLElement
+  if (target.classList.contains('clickable-query')) {
+    const query = target.getAttribute('data-query')
+    if (query) {
+      emit('retry-direct', query)
+    }
+  }
+}
+
+// 挂载时添加事件监听
+onMounted(() => {
+  // 使用事件委托，在消息体上监听点击事件
+  const messageBody = document.querySelector(`[data-message-id="${props.message.id}"]`)
+  if (messageBody) {
+    messageBody.addEventListener('click', handleClickableQueryClick)
+  }
+})
+
+// 卸载时移除事件监听
+onUnmounted(() => {
+  const messageBody = document.querySelector(`[data-message-id="${props.message.id}"]`)
+  if (messageBody) {
+    messageBody.removeEventListener('click', handleClickableQueryClick)
+  }
+})
 </script>
 
 <style scoped>
@@ -651,5 +683,23 @@ const handleChartClick = (params: any) => {
 
 .loading-message .el-icon {
   font-size: 16px;
+}
+
+/* 可点击的查询文本 */
+.text-content :deep(.clickable-query) {
+  color: #409eff;
+  cursor: pointer;
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.text-content :deep(.clickable-query:hover) {
+  color: #66b1ff;
+}
+
+.text-content :deep(.clickable-hint) {
+  color: #909399;
+  font-size: 12px;
+  font-weight: normal;
 }
 </style>

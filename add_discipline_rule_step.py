@@ -1,190 +1,158 @@
 """
-为计算流程ID34添加学科规则调整步骤
+添加学科规则应用步骤到计算流程
 
-步骤说明:
-- 在步骤5（业务导向调整）之后、步骤6（业务价值汇总）之前插入新步骤
-- 新步骤6: 学科规则调整 - 根据学科规则系数调整维度的业务价值
-- 原步骤6（业务价值汇总）改为步骤7
+学科规则在业务导向调整之后、业务价值汇总之前应用
+给维度业务价值乘以学科规则系数
 """
 import os
 import sys
-from decimal import Decimal
-
-# 添加backend目录到路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
+from dotenv import load_dotenv
 
-# 数据库连接
-DATABASE_URL = "postgresql://root:root@47.108.227.254:50016/hospital_value"
+# 加载环境变量
+load_dotenv(os.path.join(os.path.dirname(__file__), 'backend', '.env'))
+
+DATABASE_URL = os.getenv('DATABASE_URL')
 engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
 
-# 学科规则调整步骤的SQL
-DISCIPLINE_RULE_STEP_SQL = """
--- ============================================================================
--- 步骤6: 学科规则调整
--- ============================================================================
--- 功能: 根据学科规则系数调整维度的业务价值（weight和value字段）
---
--- 输入参数(通过占位符):
---   {task_id}    - 计算任务ID
---   {version_id} - 模型版本ID
---   {hospital_id} - 医疗机构ID
---
--- 算法说明:
---   1. 从 discipline_rules 表获取科室-维度的规则系数
---   2. 调整后的 weight = 原 weight * rule_coefficient
---   3. 调整后的 value = 原 value * rule_coefficient
---
--- 输出: 更新 calculation_results 表中匹配的维度节点的 weight 和 value 字段
--- ============================================================================
+# 学科规则应用步骤的 SQL
+DISCIPLINE_RULE_SQL = """
+-- 学科规则应用步骤
+-- 在业务导向调整之后、业务价值汇总之前执行
+-- 给维度业务价值乘以学科规则系数
 
--- 第1步: 更新 calculation_results 表中的 weight 和 value 字段
--- 注意: PostgreSQL UPDATE...FROM 语法中，FROM子句的表不能用JOIN引用被更新表
+-- 更新 calculation_results 中的 value 字段
+-- 只更新有学科规则的维度
 UPDATE calculation_results cr
-SET 
-    weight = cr.weight * dr.rule_coefficient,
-    value = cr.value * dr.rule_coefficient
-FROM discipline_rules dr, departments d, model_nodes mn
+SET value = cr.value * dr.rule_coefficient
+FROM discipline_rules dr
+JOIN departments d ON d.accounting_unit_code = dr.department_code 
+    AND d.hospital_id = dr.hospital_id
+JOIN model_nodes mn ON mn.code = dr.dimension_code 
+    AND mn.version_id = dr.version_id
 WHERE cr.task_id = '{task_id}'
-  AND cr.node_type = 'dimension'
   AND cr.department_id = d.id
   AND cr.node_id = mn.id
   AND dr.version_id = {version_id}
-  AND dr.hospital_id = {hospital_id}
-  AND dr.department_code = d.his_code
-  AND dr.dimension_code = mn.code;
+  AND dr.hospital_id = {hospital_id};
 
 -- 返回更新的记录数
-SELECT COUNT(*) as updated_count
+SELECT 
+    COUNT(*) as updated_count,
+    '学科规则应用完成' as message
 FROM calculation_results cr
-INNER JOIN departments d ON cr.department_id = d.id
-INNER JOIN model_nodes mn ON cr.node_id = mn.id
-INNER JOIN discipline_rules dr 
-    ON dr.department_code = d.his_code 
-    AND dr.dimension_code = mn.code
-    AND dr.version_id = {version_id}
-    AND dr.hospital_id = {hospital_id}
-WHERE cr.task_id = '{task_id}'
-  AND cr.node_type = 'dimension';
-
--- ============================================================================
--- 使用说明:
--- ============================================================================
--- 1. 此步骤在Step5（业务导向调整）之后、Step7（价值汇总）之前执行
--- 2. 只调整在 discipline_rules 表中配置了规则的科室-维度组合
--- 3. 未配置规则的科室-维度保持原值不变
--- 4. 调整后的权重和价值会影响Step7的价值汇总结果
--- 5. 占位符会在执行时自动替换:
---    {task_id} -> 计算任务ID
---    {version_id} -> 模型版本ID
---    {hospital_id} -> 医疗机构ID
--- ============================================================================
+JOIN discipline_rules dr ON dr.version_id = {version_id} AND dr.hospital_id = {hospital_id}
+JOIN departments d ON d.accounting_unit_code = dr.department_code 
+    AND d.hospital_id = dr.hospital_id
+    AND cr.department_id = d.id
+JOIN model_nodes mn ON mn.code = dr.dimension_code 
+    AND mn.version_id = dr.version_id
+    AND cr.node_id = mn.id
+WHERE cr.task_id = '{task_id}';
 """
 
-
-def add_discipline_rule_step():
-    """添加学科规则调整步骤到流程34"""
+def add_discipline_rule_step(workflow_id: int = 31, data_source_id: int = 3):
+    """添加学科规则应用步骤"""
     session = Session()
     
     try:
-        # 1. 检查流程34是否存在
-        result = session.execute(text(
-            "SELECT id, name FROM calculation_workflows WHERE id = 34"
-        ))
-        workflow = result.fetchone()
-        if not workflow:
-            print("错误: 流程ID 34 不存在")
-            return False
-        print(f"找到流程: {workflow.name}")
-        
-        # 2. 查看当前步骤
-        result = session.execute(text("""
-            SELECT id, name, sort_order 
-            FROM calculation_steps 
-            WHERE workflow_id = 34 
-            ORDER BY sort_order
-        """))
-        steps = result.fetchall()
-        print("\n当前步骤:")
-        for step in steps:
-            print(f"  ID={step.id}, sort_order={step.sort_order}, name={step.name}")
-        
-        # 3. 检查是否已存在学科规则调整步骤
+        # 检查步骤是否已存在
         result = session.execute(text("""
             SELECT id FROM calculation_steps 
-            WHERE workflow_id = 34 AND name = '学科规则调整'
-        """))
+            WHERE workflow_id = :workflow_id AND name = '学科规则应用'
+        """), {"workflow_id": workflow_id})
         existing = result.fetchone()
+        
         if existing:
-            print(f"\n学科规则调整步骤已存在 (ID={existing.id})，跳过创建")
-            return True
+            print(f"步骤已存在，ID: {existing[0]}")
+            # 更新 SQL
+            session.execute(text("""
+                UPDATE calculation_steps 
+                SET code_content = :code_content
+                WHERE id = :step_id
+            """), {
+                "step_id": existing[0],
+                "code_content": DISCIPLINE_RULE_SQL
+            })
+            session.commit()
+            print("已更新步骤 SQL")
+            return existing[0]
         
-        # 4. 将原步骤6（业务价值汇总，sort_order=6.00）改为步骤7
-        print("\n将业务价值汇总步骤的sort_order从6.00改为7.00...")
-        session.execute(text("""
-            UPDATE calculation_steps 
-            SET sort_order = 7.00 
-            WHERE workflow_id = 34 AND sort_order = 6.00
-        """))
-        
-        # 5. 插入新的步骤6（学科规则调整）
-        # 获取其他步骤使用的数据源ID
+        # 获取业务价值汇总步骤的 sort_order
         result = session.execute(text("""
-            SELECT data_source_id FROM calculation_steps 
-            WHERE workflow_id = 34 AND data_source_id IS NOT NULL 
-            LIMIT 1
-        """))
-        data_source_row = result.fetchone()
-        data_source_id = data_source_row.data_source_id if data_source_row else None
+            SELECT sort_order FROM calculation_steps 
+            WHERE workflow_id = :workflow_id AND name = '业务价值汇总'
+        """), {"workflow_id": workflow_id})
+        summary_step = result.fetchone()
         
-        print(f"插入学科规则调整步骤 (sort_order=6.00, data_source_id={data_source_id})...")
-        session.execute(text("""
-            INSERT INTO calculation_steps (
-                workflow_id, name, description, code_type, code_content, 
-                sort_order, is_enabled, created_at, updated_at, data_source_id
-            ) VALUES (
-                34, 
-                '学科规则调整', 
-                '根据学科规则系数调整维度的业务价值（weight和value字段）',
-                'sql',
-                :sql_content,
-                6.00,
-                true,
-                NOW(),
-                NOW(),
-                :data_source_id
-            )
-        """), {"sql_content": DISCIPLINE_RULE_STEP_SQL, "data_source_id": data_source_id})
+        if not summary_step:
+            print("未找到业务价值汇总步骤")
+            return None
         
+        summary_sort_order = float(summary_step[0])
+        
+        # 新步骤的 sort_order 在业务导向调整和业务价值汇总之间
+        # 业务导向调整是 4.00，业务价值汇总是 5.00
+        new_sort_order = 4.50
+        
+        # 插入新步骤
+        result = session.execute(text("""
+            INSERT INTO calculation_steps 
+            (workflow_id, name, description, code_type, code_content, sort_order, is_enabled, data_source_id, created_at, updated_at)
+            VALUES 
+            (:workflow_id, '学科规则应用', '应用学科规则系数，调整维度业务价值', 'sql', :code_content, :sort_order, true, :data_source_id, NOW(), NOW())
+            RETURNING id
+        """), {
+            "workflow_id": workflow_id,
+            "code_content": DISCIPLINE_RULE_SQL,
+            "sort_order": new_sort_order,
+            "data_source_id": data_source_id
+        })
+        
+        new_step_id = result.fetchone()[0]
         session.commit()
         
-        # 6. 验证结果
-        result = session.execute(text("""
-            SELECT id, name, sort_order 
-            FROM calculation_steps 
-            WHERE workflow_id = 34 
-            ORDER BY sort_order
-        """))
-        steps = result.fetchall()
-        print("\n更新后的步骤:")
-        for step in steps:
-            print(f"  ID={step.id}, sort_order={step.sort_order}, name={step.name}")
-        
-        print("\n✓ 学科规则调整步骤添加成功!")
-        return True
+        print(f"已添加学科规则应用步骤，ID: {new_step_id}, sort_order: {new_sort_order}")
+        return new_step_id
         
     except Exception as e:
         session.rollback()
         print(f"错误: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        return None
+    finally:
+        session.close()
+
+
+def verify_step(workflow_id: int = 31):
+    """验证步骤顺序"""
+    session = Session()
+    
+    try:
+        result = session.execute(text("""
+            SELECT id, name, sort_order, is_enabled
+            FROM calculation_steps 
+            WHERE workflow_id = :workflow_id
+            ORDER BY sort_order
+        """), {"workflow_id": workflow_id})
+        
+        print("\n当前步骤顺序:")
+        print("-" * 60)
+        for row in result:
+            enabled = "✓" if row[3] else "✗"
+            print(f"  [{enabled}] {row[2]:5.2f} - {row[1]} (ID: {row[0]})")
+        print("-" * 60)
+        
     finally:
         session.close()
 
 
 if __name__ == "__main__":
+    print("添加学科规则应用步骤...")
     add_discipline_rule_step()
+    verify_step()

@@ -452,6 +452,89 @@ def send_message(
     }
 
 
+@router.post("/{conversation_id}/messages/retry-direct", response_model=dict)
+def retry_direct_search(
+    conversation_id: int,
+    data: SendMessageRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    使用原始问题直接搜索（跳过AI关键词提取）
+    
+    当AI提取的关键词不准确时，用户可以点击原始问题，使用原始问题直接搜索。
+    """
+    hospital_id = require_hospital_id()
+    
+    # 验证对话存在
+    conversation = db.query(Conversation).filter(
+        Conversation.id == conversation_id,
+        Conversation.hospital_id == hospital_id
+    ).first()
+    
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="对话不存在"
+        )
+    
+    # 只支持指标口径查询类型
+    if conversation.conversation_type != "caliber":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="此功能仅支持指标口径查询类型的对话"
+        )
+    
+    # 创建用户消息（标记为重试）
+    user_message = ConversationMessage(
+        conversation_id=conversation_id,
+        role=MessageRole.USER,
+        content=f"[直接查询] {data.content}",
+        content_type=ContentType.TEXT,
+    )
+    db.add(user_message)
+    
+    # 更新对话的更新时间
+    conversation.updated_at = datetime.utcnow()
+    
+    db.commit()
+    db.refresh(user_message)
+    
+    # 调用指标口径查询，跳过AI提取
+    assistant_content, assistant_content_type, assistant_metadata = _handle_caliber_query(
+        db=db,
+        hospital_id=hospital_id,
+        user_content=data.content,
+        skip_ai_extraction=True,
+    )
+    
+    # 创建AI回复消息
+    assistant_message = ConversationMessage(
+        conversation_id=conversation_id,
+        role=MessageRole.ASSISTANT,
+        content=assistant_content,
+        content_type=assistant_content_type,
+        message_metadata=assistant_metadata,
+    )
+    db.add(assistant_message)
+    db.commit()
+    db.refresh(assistant_message)
+    
+    logger.info(f"直接搜索: conversation_id={conversation_id}, query={data.content}")
+    
+    # 构建响应
+    response = SendMessageResponse(
+        user_message=_build_message_response(user_message),
+        assistant_message=_build_message_response(assistant_message),
+    )
+    
+    return {
+        "code": 200,
+        "message": "搜索成功",
+        "data": response.model_dump(),
+    }
+
+
 def _generate_ai_response(
     db: Session,
     hospital_id: int,
@@ -499,30 +582,48 @@ def _handle_caliber_query(
     db: Session,
     hospital_id: int,
     user_content: str,
+    skip_ai_extraction: bool = False,
 ) -> tuple:
     """
     处理指标口径查询
     
     使用智能搜索：先直接搜索，无结果时尝试AI提取关键词再搜索
     需求 3.1, 3.2, 3.4
+    
+    Args:
+        skip_ai_extraction: 是否跳过AI关键词提取，直接使用原始问题搜索
     """
     try:
-        # 使用智能搜索（支持AI关键词提取）
-        search_results, used_keywords, original_query = MetricCaliberService.smart_search_metrics(
-            db=db,
-            hospital_id=hospital_id,
-            user_query=user_content,
-            limit=20,
-        )
+        if skip_ai_extraction:
+            # 直接使用原始问题搜索，不经过AI提取
+            search_results = MetricCaliberService.search_metrics(
+                db=db,
+                hospital_id=hospital_id,
+                keyword=user_content,
+                limit=20,
+            )
+            used_keywords = [user_content]
+            original_query = user_content
+        else:
+            # 使用智能搜索（支持AI关键词提取）
+            search_results, used_keywords, original_query = MetricCaliberService.smart_search_metrics(
+                db=db,
+                hospital_id=hospital_id,
+                user_query=user_content,
+                limit=20,
+            )
+        
+        # 判断是否使用了AI提取的关键词（与原始问题不同）
+        ai_extracted = used_keywords and used_keywords != [original_query]
         
         if search_results:
             # 构建友好的响应
             response_parts = ["## 指标口径查询结果\n"]
             
             # 显示查询信息
-            if used_keywords and used_keywords != [original_query]:
-                # AI提取了关键词
-                response_parts.append(f"您的问题：**{original_query}**\n")
+            if ai_extracted:
+                # AI提取了关键词，显示可点击的原始问题，并在后面添加提示
+                response_parts.append(f'您的问题：<span class="clickable-query" data-query="{original_query}">{original_query}</span> <span class="clickable-hint">（点击直接按原文查询）</span>\n')
                 response_parts.append(f"智能提取关键词：**{', '.join(used_keywords)}**\n")
             else:
                 response_parts.append(f"查询关键词：**{original_query}**\n")
@@ -539,6 +640,8 @@ def _handle_caliber_query(
                 "used_keywords": used_keywords,
                 "result_count": len(search_results),
                 "metrics": [r.to_dict() for r in search_results],
+                "ai_extracted": ai_extracted,  # 标记是否使用了AI提取
+                "can_retry_direct": ai_extracted,  # 标记是否可以使用原始问题重试
             }
             return response, ContentType.TEXT, metadata
         else:
@@ -550,10 +653,12 @@ def _handle_caliber_query(
             )
             
             response_parts = ["## 指标口径查询结果\n"]
-            response_parts.append(f"您的问题：**{user_content}**\n")
             
-            if used_keywords and used_keywords != [user_content]:
+            if ai_extracted:
+                response_parts.append(f'您的问题：<span class="clickable-query" data-query="{user_content}">{user_content}</span> <span class="clickable-hint">（点击直接按原文查询）</span>\n')
                 response_parts.append(f"智能提取关键词：**{', '.join(used_keywords)}**\n")
+            else:
+                response_parts.append(f"您的问题：**{user_content}**\n")
             
             response_parts.append("未找到匹配的指标。\n")
             
@@ -571,7 +676,9 @@ def _handle_caliber_query(
             return response, ContentType.TEXT, {
                 "query": user_content,
                 "used_keywords": used_keywords,
-                "result_count": 0
+                "result_count": 0,
+                "ai_extracted": ai_extracted,
+                "can_retry_direct": ai_extracted,
             }
             
     except Exception as e:

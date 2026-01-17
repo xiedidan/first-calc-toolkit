@@ -47,6 +47,7 @@ export interface DisciplineRuleQueryParams {
   version_id?: number
   department_code?: string
   dimension_code?: string
+  node_id?: number  // 节点ID，用于查询维度代码
   keyword?: string
 }
 
@@ -100,5 +101,38 @@ export function deleteDisciplineRule(id: number): Promise<void> {
   return request({
     url: `/discipline-rules/${id}`,
     method: 'delete'
+  })
+}
+
+/**
+ * 导出学科规则
+ */
+export function exportDisciplineRules(params: {
+  version_id?: number
+  department_code?: string
+  dimension_code?: string
+  keyword?: string
+}): Promise<Blob> {
+  return request({
+    url: '/discipline-rules/export',
+    method: 'get',
+    params,
+    responseType: 'blob'
+  })
+}
+
+/**
+ * 批量删除筛选出的学科规则
+ */
+export function batchDeleteDisciplineRules(params: {
+  version_id?: number
+  department_code?: string
+  dimension_code?: string
+  keyword?: string
+}): Promise<{ deleted_count: number }> {
+  return request({
+    url: '/discipline-rules/batch-delete',
+    method: 'delete',
+    params
   })
 }

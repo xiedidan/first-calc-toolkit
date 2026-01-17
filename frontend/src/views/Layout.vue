@@ -113,7 +113,7 @@
 
           <!-- 评估模型管理 -->
           <el-sub-menu 
-            v-if="isSubMenuVisible(['/model-versions', '/dimension-items', '/cost-benchmarks', '/discipline-rules', '/calculation-workflows'])"
+            v-if="isSubMenuVisible(['/model-versions', '/dimension-items', '/cost-benchmarks', '/inclusive-fees', '/discipline-rules', '/calculation-workflows'])"
             index="model"
           >
             <template #title>
@@ -123,6 +123,7 @@
             <el-menu-item v-if="isMenuItemEnabled('/model-versions')" index="/model-versions">模型版本管理</el-menu-item>
             <el-menu-item v-if="isMenuItemEnabled('/dimension-items')" index="/dimension-items">维度目录管理</el-menu-item>
             <el-menu-item v-if="isMenuItemEnabled('/cost-benchmarks')" index="/cost-benchmarks">成本基准管理</el-menu-item>
+            <el-menu-item v-if="isMenuItemEnabled('/inclusive-fees')" index="/inclusive-fees">内含收费管理</el-menu-item>
             <el-menu-item v-if="isMenuItemEnabled('/discipline-rules')" index="/discipline-rules">学科规则管理</el-menu-item>
             <el-menu-item v-if="isMenuItemEnabled('/calculation-workflows')" index="/calculation-workflows">计算流程管理</el-menu-item>
           </el-sub-menu>
@@ -323,6 +324,9 @@ const activeMenu = computed(() => {
   }
   if (path.startsWith('/cost-benchmarks')) {
     return '/cost-benchmarks'
+  }
+  if (path.startsWith('/inclusive-fees')) {
+    return '/inclusive-fees'
   }
   if (path.startsWith('/discipline-rules')) {
     return '/discipline-rules'

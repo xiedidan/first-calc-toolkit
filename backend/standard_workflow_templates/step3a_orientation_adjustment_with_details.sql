@@ -124,6 +124,7 @@ final_calculation AS (
             WHEN lm.benchmark_value IS NULL THEN FALSE
             WHEN lm.benchmark_value = 0 THEN FALSE
             WHEN lm.adjustment_intensity IS NULL THEN FALSE
+            WHEN lm.adjustment_intensity = 1 THEN FALSE  -- 管控力度为1时实际未调整
             ELSE TRUE
         END as is_adjusted,
         CASE 

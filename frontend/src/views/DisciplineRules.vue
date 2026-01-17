@@ -4,7 +4,11 @@
       <template #header>
         <div class="card-header">
           <span>学科规则管理</span>
-          <el-button type="primary" @click="handleAdd">添加学科规则</el-button>
+          <div>
+            <el-button type="danger" @click="handleBatchDelete" :loading="batchDeleting" :disabled="pagination.total === 0">删除筛选结果</el-button>
+            <el-button @click="handleExport" :loading="exporting">导出</el-button>
+            <el-button type="primary" @click="handleAdd">添加学科规则</el-button>
+          </div>
         </div>
       </template>
 
@@ -39,10 +43,10 @@
             style="width: 200px"
           >
             <el-option
-              v-for="dept in departments"
-              :key="dept.his_code"
-              :label="dept.his_name"
-              :value="dept.his_code"
+              v-for="dept in filteredDepartments"
+              :key="dept.accounting_unit_code"
+              :label="dept.accounting_unit_name || dept.his_name"
+              :value="dept.accounting_unit_code"
             />
           </el-select>
         </el-form-item>
@@ -93,6 +97,14 @@
         <el-table-column prop="rule_coefficient" label="规则参数" width="120" align="right">
           <template #default="{ row }">
             {{ formatCoefficient(row.rule_coefficient) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="业务分析" min-width="300" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span v-if="hasAnalysis(row)" class="analysis-content">
+              {{ getAnalysisContent(row) }}
+            </span>
+            <span v-else class="no-analysis">暂无分析</span>
           </template>
         </el-table-column>
         <el-table-column prop="updated_at" label="更新时间" width="180" />
@@ -152,10 +164,10 @@
             @change="handleDepartmentChange"
           >
             <el-option
-              v-for="dept in departments"
-              :key="dept.his_code"
-              :label="dept.his_name"
-              :value="dept.his_code"
+              v-for="dept in filteredDepartments"
+              :key="dept.accounting_unit_code"
+              :label="dept.accounting_unit_name || dept.his_name"
+              :value="dept.accounting_unit_code"
             />
           </el-select>
         </el-form-item>
@@ -164,6 +176,7 @@
             v-model="form.dimension_code"
             placeholder="请选择维度（序列 - 一级维度 - 二级维度...）"
             filterable
+            :loading="dimensionsLoading"
             style="width: 100%"
             @change="handleDimensionChange"
           >
@@ -206,7 +219,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, watch, computed } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
 import request from '@/utils/request'
 import {
@@ -214,8 +227,11 @@ import {
   createDisciplineRule,
   updateDisciplineRule,
   deleteDisciplineRule,
+  exportDisciplineRules,
+  batchDeleteDisciplineRules,
   type DisciplineRule
 } from '@/api/discipline-rules'
+import { batchQueryByDeptAndDimCodes, type DimensionAnalysisByCodesItem } from '@/api/dimension-analyses'
 import type { ModelVersion } from '@/api/model'
 
 
@@ -241,6 +257,8 @@ interface Department {
   id: number
   his_code: string
   his_name: string
+  accounting_unit_code: string | null
+  accounting_unit_name: string | null
 }
 
 interface Dimension {
@@ -253,6 +271,8 @@ interface Dimension {
 
 const loading = ref(false)
 const submitting = ref(false)
+const exporting = ref(false)
+const batchDeleting = ref(false)
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const dialogTitle = ref('添加学科规则')
@@ -262,6 +282,13 @@ const formRef = ref<FormInstance>()
 const versions = ref<ModelVersion[]>([])
 const departments = ref<Department[]>([])
 const dimensions = ref<Dimension[]>([])
+const dimensionsLoading = ref(false)
+const loadedDimensionVersionId = ref<number | undefined>(undefined)  // 缓存已加载的版本ID
+
+// 过滤有核算单元代码的科室（学科规则使用核算单元代码）
+const filteredDepartments = computed(() => {
+  return departments.value.filter(d => d.accounting_unit_code)
+})
 
 // 搜索表单
 const searchForm = reactive({
@@ -280,6 +307,9 @@ const pagination = reactive({
 
 // 表格数据
 const tableData = ref<DisciplineRule[]>([])
+
+// 业务分析数据
+const analysisMap = ref<Record<string, DimensionAnalysisByCodesItem>>({})
 
 // 表单数据
 const form = reactive({
@@ -327,6 +357,9 @@ const fetchDisciplineRules = async () => {
     const res = await getDisciplineRules(params)
     tableData.value = res.items || []
     pagination.total = res.total || 0
+    
+    // 加载业务分析数据
+    await fetchAnalysisData()
   } catch (error: any) {
     console.error('获取学科规则列表失败:', error)
     tableData.value = []
@@ -334,6 +367,53 @@ const fetchDisciplineRules = async () => {
   } finally {
     loading.value = false
   }
+}
+
+// 加载业务分析数据
+const fetchAnalysisData = async () => {
+  if (tableData.value.length === 0) {
+    analysisMap.value = {}
+    return
+  }
+  
+  try {
+    const deptCodes = [...new Set(tableData.value.map(r => r.department_code))]
+    const dimCodes = [...new Set(tableData.value.map(r => r.dimension_code))]
+    
+    const res = await batchQueryByDeptAndDimCodes(deptCodes, dimCodes)
+    analysisMap.value = res || {}
+  } catch (error: any) {
+    console.error('获取业务分析数据失败:', error)
+    analysisMap.value = {}
+  }
+}
+
+// 获取某行的业务分析内容
+const getAnalysisContent = (row: DisciplineRule): string => {
+  const key = `${row.department_code}|${row.dimension_code}`
+  const analysis = analysisMap.value[key]
+  
+  if (!analysis) return ''
+  
+  // 优先显示长期分析，其次显示最新的当期分析
+  if (analysis.long_term_content) {
+    return analysis.long_term_content
+  }
+  
+  if (analysis.current_analyses && analysis.current_analyses.length > 0) {
+    // 按月份倒序排列，取最新的
+    const sorted = [...analysis.current_analyses].sort((a, b) => b.period.localeCompare(a.period))
+    return `[${sorted[0].period}] ${sorted[0].content}`
+  }
+  
+  return ''
+}
+
+// 判断是否有业务分析
+const hasAnalysis = (row: DisciplineRule): boolean => {
+  const key = `${row.department_code}|${row.dimension_code}`
+  const analysis = analysisMap.value[key]
+  return !!(analysis && (analysis.long_term_content || (analysis.current_analyses && analysis.current_analyses.length > 0)))
 }
 
 const fetchVersions = async () => {
@@ -362,7 +442,7 @@ const fetchDepartments = async () => {
   }
 }
 
-const fetchDimensions = async (versionId?: number) => {
+const fetchDimensions = async (versionId?: number, force = false) => {
   try {
     let targetVersionId = versionId
     if (!targetVersionId) {
@@ -375,12 +455,21 @@ const fetchDimensions = async (versionId?: number) => {
       return
     }
     
+    // 如果已经加载过相同版本的维度，且不强制刷新，则跳过
+    if (!force && loadedDimensionVersionId.value === targetVersionId && dimensions.value.length > 0) {
+      return
+    }
+    
+    dimensionsLoading.value = true
     // 获取该版本的所有叶子维度
     const res = await request.get(`/model-nodes/version/${targetVersionId}/leaf-dimensions`)
     dimensions.value = res.items || []
+    loadedDimensionVersionId.value = targetVersionId
   } catch (error: any) {
     console.error('获取维度列表失败:', error)
     dimensions.value = []
+  } finally {
+    dimensionsLoading.value = false
   }
 }
 
@@ -407,6 +496,102 @@ const handleReset = () => {
   searchForm.dimension_code = ''
   searchForm.keyword = ''
   handleSearch()
+}
+
+const handleExport = async () => {
+  exporting.value = true
+  try {
+    const response = await exportDisciplineRules({
+      version_id: searchForm.version_id,
+      department_code: searchForm.department_code || undefined,
+      dimension_code: searchForm.dimension_code || undefined,
+      keyword: searchForm.keyword || undefined
+    }) as any
+    
+    // axios 拦截器对 blob 响应返回完整 response 对象
+    const blob = response.data || response
+    
+    // 从响应头获取文件名，如果没有则使用默认名称
+    let filename = '学科规则.xlsx'
+    const contentDisposition = response.headers?.['content-disposition']
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename\*=UTF-8''(.+)/)
+      if (match) {
+        filename = decodeURIComponent(match[1])
+      }
+    }
+    
+    // 创建下载链接
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    
+    ElMessage.success('导出成功')
+  } catch (error: any) {
+    console.error('导出失败:', error)
+    ElMessage.error('导出失败')
+  } finally {
+    exporting.value = false
+  }
+}
+
+const handleBatchDelete = async () => {
+  // 构建筛选条件描述
+  const conditions: string[] = []
+  if (searchForm.version_id) {
+    const version = versions.value.find(v => v.id === searchForm.version_id)
+    if (version) conditions.push(`版本: ${version.name}`)
+  }
+  if (searchForm.department_code) {
+    const dept = departments.value.find(d => d.accounting_unit_code === searchForm.department_code)
+    if (dept) conditions.push(`科室: ${dept.accounting_unit_name || dept.his_name}`)
+  }
+  if (searchForm.dimension_code) {
+    const dim = dimensions.value.find(d => d.code === searchForm.dimension_code)
+    if (dim) conditions.push(`维度: ${dim.name}`)
+  }
+  if (searchForm.keyword) {
+    conditions.push(`关键词: ${searchForm.keyword}`)
+  }
+  
+  const conditionText = conditions.length > 0 
+    ? `\n筛选条件：${conditions.join('，')}`
+    : '（无筛选条件，将删除全部数据）'
+  
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除筛选出的 ${pagination.total} 条学科规则吗？${conditionText}\n\n此操作不可恢复！`,
+      '批量删除确认',
+      {
+        type: 'warning',
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消',
+        confirmButtonClass: 'el-button--danger'
+      }
+    )
+    
+    batchDeleting.value = true
+    const res = await batchDeleteDisciplineRules({
+      version_id: searchForm.version_id,
+      department_code: searchForm.department_code || undefined,
+      dimension_code: searchForm.dimension_code || undefined,
+      keyword: searchForm.keyword || undefined
+    })
+    
+    ElMessage.success(`成功删除 ${res.deleted_count} 条学科规则`)
+    pagination.page = 1
+    fetchDisciplineRules()
+  } catch (error: any) {
+    if (error === 'cancel') return
+    console.error('批量删除失败:', error)
+  } finally {
+    batchDeleting.value = false
+  }
 }
 
 const handleSizeChange = () => {
@@ -535,9 +720,9 @@ const handleVersionChange = (id: number) => {
 }
 
 const handleDepartmentChange = (code: string) => {
-  const dept = departments.value.find(d => d.his_code === code)
+  const dept = departments.value.find(d => d.accounting_unit_code === code)
   if (dept) {
-    form.department_name = dept.his_name
+    form.department_name = dept.accounting_unit_name || dept.his_name
   }
 }
 
@@ -569,14 +754,17 @@ const getEmptyDescription = () => {
 
 onMounted(async () => {
   try {
-    await Promise.all([
+    // 并行加载所有初始数据，不等待维度（维度只在对话框中需要）
+    const [versionsResult] = await Promise.all([
       fetchVersions(),
-      fetchDepartments()
+      fetchDepartments(),
+      fetchDisciplineRules()  // 先不带版本筛选，快速显示数据
     ])
-    // 版本加载完成后加载维度
-    await fetchDimensions(searchForm.version_id)
-    // 最后加载列表数据
-    await fetchDisciplineRules()
+    
+    // 版本加载完成后，如果有激活版本，重新加载带筛选的列表
+    if (searchForm.version_id) {
+      fetchDisciplineRules()
+    }
   } catch (error: any) {
     console.error('页面初始化失败:', error)
     ElMessage.error('页面初始化失败，请刷新页面重试')
@@ -602,5 +790,15 @@ onMounted(async () => {
 .pagination {
   margin-top: 20px;
   justify-content: flex-end;
+}
+
+.analysis-content {
+  color: #606266;
+  font-size: 13px;
+}
+
+.no-analysis {
+  color: #c0c4cc;
+  font-size: 13px;
 }
 </style>

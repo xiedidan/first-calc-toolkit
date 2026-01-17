@@ -15,12 +15,14 @@ class CalculationTaskCreate(BaseModel):
     department_ids: Optional[List[int]] = Field(None, description="科室ID列表，为空则计算所有科室")
     period: str = Field(..., description="计算周期(YYYY-MM)")
     description: Optional[str] = Field(None, description="任务描述")
+    batch_id: Optional[str] = Field(None, description="批次ID，同一次创建的多个任务共享同一批次ID")
 
 
 class CalculationTaskResponse(BaseModel):
     """计算任务响应"""
     id: int
     task_id: str
+    batch_id: Optional[str] = None
     model_version_id: int
     workflow_id: Optional[int]
     workflow_name: Optional[str] = None
@@ -103,7 +105,10 @@ class StructureRow(BaseModel):
 class TreeNode(BaseModel):
     """树形表格节点数据"""
     id: int  # 节点ID
+    node_id: Optional[int] = None  # 模型节点ID（用于分析功能）
     dimension_name: str  # 维度名称
+    dimension_code: Optional[str] = None  # 维度代码（用于学科规则匹配）
+    node_code: Optional[str] = None  # 节点代码（dimension_code的别名，兼容前端）
     workload: Optional[Decimal] = None  # 工作量
     hospital_value: str = "-"  # 全院业务价值（叶子节点有值，非叶子节点为"-"）
     business_guide: str = "-"  # 业务导向（叶子节点有值，非叶子节点为"-"）
@@ -207,3 +212,20 @@ class OrientationSummaryResponse(BaseModel):
     doctor: List[OrientationAdjustmentDetailResponse]
     nurse: List[OrientationAdjustmentDetailResponse]
     tech: List[OrientationAdjustmentDetailResponse]
+
+
+# 批次相关
+class BatchInfo(BaseModel):
+    """批次信息"""
+    batch_id: str
+    task_count: int
+    periods: List[str]  # 包含的月份列表
+    created_at: datetime
+    model_version_id: int
+    model_version_name: Optional[str] = None
+
+
+class BatchListResponse(BaseModel):
+    """批次列表响应"""
+    total: int
+    items: List[BatchInfo]

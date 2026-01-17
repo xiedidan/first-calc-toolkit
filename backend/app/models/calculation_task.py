@@ -14,6 +14,7 @@ class CalculationTask(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     task_id = Column(String(100), unique=True, index=True, nullable=False, comment="任务ID")
+    batch_id = Column(String(100), index=True, nullable=True, comment="批次ID，同一次创建的多个任务共享同一批次ID")
     model_version_id = Column(Integer, ForeignKey("model_versions.id"), nullable=False, comment="模型版本ID")
     workflow_id = Column(Integer, ForeignKey("calculation_workflows.id"), nullable=True, comment="计算流程ID")
     period = Column(String(20), nullable=False, comment="计算周期(YYYY-MM)")

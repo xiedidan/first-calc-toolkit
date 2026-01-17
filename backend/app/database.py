@@ -11,11 +11,12 @@ from app.config import settings
 engine = create_engine(
     settings.DATABASE_URL,
     pool_pre_ping=True,
-    pool_size=5,  # 减少连接池大小
-    max_overflow=10,  # 减少最大溢出连接数
-    pool_recycle=3600,  # 1小时回收连接
+    pool_size=10,  # 增加连接池大小
+    max_overflow=20,  # 增加最大溢出连接数
+    pool_recycle=1800,  # 30分钟回收连接
+    pool_timeout=60,  # 连接超时60秒
     connect_args={
-        "connect_timeout": 5,  # 连接超时5秒
+        "connect_timeout": 10,  # 连接超时10秒
     }
 )
 

@@ -69,6 +69,21 @@ def get_business_type_from_dimension_code(dimension_code: str) -> Optional[str]:
     return None
 
 
+def is_diagnosis_dimension(dimension_code: str) -> bool:
+    """
+    判断是否为诊断维度（使用开单科室 prescribing_dept_code）
+    
+    诊断维度：dim-doc-in-eval-* 或 dim-doc-out-eval-*
+    其他所有维度使用执行科室 executing_dept_code
+    
+    返回: True 表示使用开单科室，False 表示使用执行科室
+    """
+    if not dimension_code:
+        return False
+    return (dimension_code.startswith('dim-doc-in-eval-') or 
+            dimension_code.startswith('dim-doc-out-eval-'))
+
+
 def is_department_user(user: User) -> bool:
     """判断用户是否为科室用户"""
     if not user.roles:
@@ -354,6 +369,148 @@ def get_analysis_reports(
     return AnalysisReportList(total=total, items=result_items)
 
 
+def is_drilldown_supported(dimension_code: str) -> tuple[bool, str]:
+    """
+    检查维度是否支持下钻
+    
+    返回: (是否支持, 错误信息)
+    """
+    if not dimension_code:
+        return False, "该维度缺少编码信息，无法下钻"
+    
+    # 成本维度不支持下钻
+    if '-cost' in dimension_code:
+        return False, "指标维度（成本等）不支持下钻"
+    
+    # 病例价值维度不支持下钻
+    if dimension_code == 'dim-doc-case':
+        return False, "病例价值维度不支持下钻"
+    
+    # 医生序列维度
+    if dimension_code.startswith('dim-doc-'):
+        return True, ""
+    
+    # 医技序列维度
+    if dimension_code.startswith('dim-tech-'):
+        return True, ""
+    
+    # 护理序列 - 工作量统计维度不支持下钻
+    nurse_workload_prefixes = ['dim-nur-bed', 'dim-nur-trans', 'dim-nur-op', 'dim-nur-or', 'dim-nur-mon']
+    if any(dimension_code.startswith(p) for p in nurse_workload_prefixes):
+        return False, "工作量统计维度不支持下钻"
+    
+    # 护理序列 - 收费类维度支持下钻
+    if dimension_code.startswith('dim-nur-'):
+        return True, ""
+    
+    return False, "仅支持医生、医技、护理序列中按维度目录计算的末级维度下钻"
+
+
+def query_drilldown_from_calculation_details(
+    db: Session,
+    task_id: str,
+    department_id: int,
+    node_id: int,
+    hospital_id: int
+) -> tuple[list, str]:
+    """
+    从 calculation_details 表查询下钻数据
+    
+    Args:
+        db: 数据库会话
+        task_id: 任务ID
+        department_id: 科室ID（0表示全院汇总）
+        node_id: 节点ID
+        hospital_id: 医疗机构ID
+        
+    Returns:
+        (数据列表, 错误信息)
+    """
+    from decimal import Decimal
+    from sqlalchemy import text
+    from app.models.calculation_detail import CalculationDetail
+    from app.models.charge_item import ChargeItem
+    
+    is_hospital_summary = (department_id == 0)
+    
+    # 构建查询
+    if is_hospital_summary:
+        # 全院汇总：按项目聚合所有科室的数据
+        sql = text("""
+            SELECT 
+                item_code,
+                item_name,
+                item_category,
+                SUM(amount) as total_amount,
+                SUM(quantity) as total_quantity
+            FROM calculation_details
+            WHERE task_id = :task_id
+            AND node_id = :node_id
+            GROUP BY item_code, item_name, item_category
+            ORDER BY total_amount DESC
+        """)
+        result = db.execute(sql, {
+            "task_id": task_id,
+            "node_id": node_id
+        })
+    else:
+        # 单科室查询
+        sql = text("""
+            SELECT 
+                item_code,
+                item_name,
+                item_category,
+                SUM(amount) as total_amount,
+                SUM(quantity) as total_quantity
+            FROM calculation_details
+            WHERE task_id = :task_id
+            AND department_id = :department_id
+            AND node_id = :node_id
+            GROUP BY item_code, item_name, item_category
+            ORDER BY total_amount DESC
+        """)
+        result = db.execute(sql, {
+            "task_id": task_id,
+            "department_id": department_id,
+            "node_id": node_id
+        })
+    
+    rows = result.fetchall()
+    
+    if not rows:
+        return [], "未找到该维度的收费明细数据"
+    
+    # 获取收费项目的单价信息和名称
+    item_codes = [row[0] for row in rows]
+    charge_items = db.query(ChargeItem).filter(
+        ChargeItem.hospital_id == hospital_id,
+        ChargeItem.item_code.in_(item_codes)
+    ).all()
+    # 构建收费项目信息映射（包含单价和名称）
+    item_info_map = {ci.item_code: ci for ci in charge_items}
+    
+    # 构建结果
+    items = []
+    for row in rows:
+        item_code = row[0]
+        item_name = row[1]
+        # 如果 item_name 为空，尝试从 charge_items 获取，否则使用 item_code
+        if not item_name:
+            charge_item = item_info_map.get(item_code)
+            item_name = charge_item.item_name if charge_item else item_code
+        
+        items.append({
+            "item_code": item_code,
+            "item_name": item_name,
+            "item_category": row[2],
+            "unit_price": item_info_map.get(item_code).unit_price if item_info_map.get(item_code) else None,
+            "amount": Decimal(str(row[3])) if row[3] else Decimal('0'),
+            "quantity": Decimal(str(row[4])) if row[4] else Decimal('0')
+        })
+    
+    return items, ""
+
+
 @router.get("/dimension-drilldown", response_model=DimensionDrillDownResponse)
 def get_dimension_drilldown_by_task(
     task_id: str = Query(..., description="任务ID"),
@@ -366,8 +523,9 @@ def get_dimension_drilldown_by_task(
     获取维度下钻明细（通过任务ID）
     
     - 用于计算结果页面的下钻功能
-    - 查询该维度对应的收费项目明细
-    - 仅支持医生序列中按维度目录计算的末级维度（除病例价值维度外）
+    - 优先从 calculation_details 表查询（如果有数据）
+    - 回退到 charge_details 表查询（兼容旧任务）
+    - 仅支持医生、医技、护理序列中按维度目录计算的末级维度
     - department_id=0 表示全院汇总，将查询所有科室的数据
     """
     from decimal import Decimal
@@ -392,7 +550,6 @@ def get_dimension_drilldown_by_task(
     is_hospital_summary = (department_id == 0)
     
     # 查询该维度节点信息
-    # 对于全院汇总(department_id=0)，从任意一个科室获取维度信息（维度结构相同）
     if is_hospital_summary:
         dimension_result = db.query(CalculationResult).filter(
             CalculationResult.task_id == task_id,
@@ -413,33 +570,12 @@ def get_dimension_drilldown_by_task(
     dimension_name = dimension_result.node_name
     dimension_code = dimension_result.node_code
     
-    if not dimension_code:
-        raise HTTPException(status_code=400, detail="该维度缺少编码信息，无法下钻")
+    # 检查是否支持下钻
+    supported, error_msg = is_drilldown_supported(dimension_code)
+    if not supported:
+        raise HTTPException(status_code=400, detail=error_msg)
     
-    # 检查是否为指标维度（成本等），指标维度不支持下钻
-    if '-cost' in dimension_code:
-        raise HTTPException(status_code=400, detail="指标维度（成本等）不支持下钻")
-    
-    # 检查是否为支持下钻的维度（医生、医技、护理序列中用charge_details计算的维度）
-    is_doctor_dim = dimension_code.startswith('dim-doc-') and dimension_code != 'dim-doc-case'
-    is_tech_dim = dimension_code.startswith('dim-tech-')
-    # 护理序列中用charge_details计算的维度（排除用workload_statistics计算的床日、出入转院等维度）
-    nurse_workload_prefixes = ['dim-nur-bed', 'dim-nur-trans', 'dim-nur-op', 'dim-nur-or', 'dim-nur-mon']
-    nurse_charge_prefixes = ['dim-nur-base', 'dim-nur-collab', 'dim-nur-tr-', 'dim-nur-other']
-    is_nurse_workload_dim = any(dimension_code.startswith(p) for p in nurse_workload_prefixes)
-    is_nurse_charge_dim = (
-        dimension_code.startswith('dim-nur-') and 
-        not is_nurse_workload_dim and
-        any(dimension_code.startswith(p) for p in nurse_charge_prefixes)
-    )
-    
-    if not is_doctor_dim and not is_tech_dim and not is_nurse_charge_dim:
-        raise HTTPException(
-            status_code=400, 
-            detail="仅支持医生、医技、护理序列中按维度目录计算的末级维度下钻（不包括病例价值维度和工作量统计维度）"
-        )
-    
-    # 检查是否为叶子节点（对于全院汇总，从任意科室检查）
+    # 检查是否为叶子节点
     if is_hospital_summary:
         has_children = db.query(CalculationResult).filter(
             CalculationResult.task_id == task_id,
@@ -455,6 +591,56 @@ def get_dimension_drilldown_by_task(
     if has_children:
         raise HTTPException(status_code=400, detail="该维度不是末级维度，无法下钻")
     
+    # 获取科室信息
+    if is_hospital_summary:
+        dept_code = None
+        dept_name = "全院汇总"
+    else:
+        department = db.query(Department).filter(
+            Department.id == department_id
+        ).first()
+        
+        if not department:
+            raise HTTPException(status_code=404, detail="科室不存在")
+        
+        dept_code = department.his_code
+        dept_name = department.accounting_unit_name or department.his_name
+    
+    # 优先从 calculation_details 表查询
+    items_data, error_msg = query_drilldown_from_calculation_details(
+        db, task_id, department_id, node_id, hospital_id
+    )
+    
+    if items_data:
+        # 使用 calculation_details 的数据
+        items = []
+        total_amount = Decimal('0')
+        total_quantity = Decimal('0')
+        
+        for item in items_data:
+            items.append(DimensionDrillDownItem(
+                period=period,
+                department_code=dept_code or "全院",
+                department_name=dept_name,
+                item_code=item["item_code"],
+                item_name=item["item_name"],
+                item_category=item["item_category"],
+                unit_price=item["unit_price"],
+                amount=item["amount"],
+                quantity=item["quantity"]
+            ))
+            total_amount += item["amount"]
+            total_quantity += item["quantity"]
+        
+        return DimensionDrillDownResponse(
+            dimension_name=dimension_name,
+            items=items,
+            total_amount=total_amount,
+            total_quantity=total_quantity,
+            message=None
+        )
+    
+    # 回退到 charge_details 表查询（兼容旧任务）
     # 查询该维度对应的收费项目映射
     mappings = db.query(DimensionItemMapping).filter(
         DimensionItemMapping.hospital_id == hospital_id,
@@ -481,23 +667,12 @@ def get_dimension_drilldown_by_task(
     
     item_info_map = {ci.item_code: ci for ci in charge_items}
     
-    # 获取科室信息（department_id=0 表示全院汇总）
-    if is_hospital_summary:
-        dept_code = None
-        dept_name = "全院汇总"
-    else:
-        department = db.query(Department).filter(
-            Department.id == department_id
-        ).first()
-        
-        if not department:
-            raise HTTPException(status_code=404, detail="科室不存在")
-        
-        dept_code = department.his_code
-        dept_name = department.accounting_unit_name or department.his_name
-    
     # 根据维度编码判断业务类型
     business_type = get_business_type_from_dimension_code(dimension_code)
+    
+    # 根据维度类型选择科室字段：诊断维度用开单科室，其他用执行科室
+    use_prescribing_dept = is_diagnosis_dimension(dimension_code)
+    dept_code_field = "prescribing_dept_code" if use_prescribing_dept else "executing_dept_code"
     
     # 从 charge_details 表查询该科室该月份该维度的收费明细
     try:
@@ -541,14 +716,14 @@ def get_dimension_drilldown_by_task(
                     "item_codes": item_codes
                 })
         elif business_type:
-            sql = text("""
+            sql = text(f"""
                 SELECT 
                     item_code,
                     item_name,
                     SUM(amount) as total_amount,
                     SUM(quantity) as total_quantity
                 FROM charge_details
-                WHERE prescribing_dept_code = :dept_code
+                WHERE {dept_code_field} = :dept_code
                 AND TO_CHAR(charge_time, 'YYYY-MM') = :period
                 AND item_code = ANY(:item_codes)
                 AND business_type = :business_type
@@ -562,14 +737,14 @@ def get_dimension_drilldown_by_task(
                 "business_type": business_type
             })
         else:
-            sql = text("""
+            sql = text(f"""
                 SELECT 
                     item_code,
                     item_name,
                     SUM(amount) as total_amount,
                     SUM(quantity) as total_quantity
                 FROM charge_details
-                WHERE prescribing_dept_code = :dept_code
+                WHERE {dept_code_field} = :dept_code
                 AND TO_CHAR(charge_time, 'YYYY-MM') = :period
                 AND item_code = ANY(:item_codes)
                 GROUP BY item_code, item_name
@@ -753,7 +928,8 @@ def preview_dimension_drilldown(
     
     - 通过科室ID、年月和节点ID直接查询，不需要报告ID
     - 可指定 task_id 使用特定任务的数据
-    - 查询该维度对应的收费项目明细
+    - 优先从 calculation_details 表查询（如果有数据）
+    - 回退到 charge_details 表查询（兼容旧任务）
     """
     from decimal import Decimal
     from sqlalchemy import text
@@ -794,30 +970,10 @@ def preview_dimension_drilldown(
     dimension_name = dimension_result.node_name
     dimension_code = dimension_result.node_code
     
-    if not dimension_code:
-        raise HTTPException(status_code=400, detail="该维度缺少编码信息，无法下钻")
-    
-    # 检查是否为指标维度（成本等），指标维度不支持下钻
-    if '-cost' in dimension_code:
-        raise HTTPException(status_code=400, detail="指标维度（成本等）不支持下钻")
-    
-    # 检查是否为支持下钻的维度
-    is_doctor_dim = dimension_code.startswith('dim-doc-') and dimension_code != 'dim-doc-case'
-    is_tech_dim = dimension_code.startswith('dim-tech-')
-    nurse_workload_prefixes = ['dim-nur-bed', 'dim-nur-trans', 'dim-nur-op', 'dim-nur-or', 'dim-nur-mon']
-    nurse_charge_prefixes = ['dim-nur-base', 'dim-nur-collab', 'dim-nur-tr-', 'dim-nur-other']
-    is_nurse_workload_dim = any(dimension_code.startswith(p) for p in nurse_workload_prefixes)
-    is_nurse_charge_dim = (
-        dimension_code.startswith('dim-nur-') and 
-        not is_nurse_workload_dim and
-        any(dimension_code.startswith(p) for p in nurse_charge_prefixes)
-    )
-    
-    if not is_doctor_dim and not is_tech_dim and not is_nurse_charge_dim:
-        raise HTTPException(
-            status_code=400, 
-            detail="仅支持医生、医技、护理序列中按维度目录计算的末级维度下钻"
-        )
+    # 检查是否支持下钻
+    supported, error_msg = is_drilldown_supported(dimension_code)
+    if not supported:
+        raise HTTPException(status_code=400, detail=error_msg)
     
     # 检查是否为叶子节点
     has_children = db.query(CalculationResult).filter(
@@ -829,6 +985,41 @@ def preview_dimension_drilldown(
     if has_children:
         raise HTTPException(status_code=400, detail="该维度不是末级维度，无法下钻")
     
+    # 优先从 calculation_details 表查询
+    items_data, error_msg = query_drilldown_from_calculation_details(
+        db, task.task_id, department_id, node_id, hospital_id
+    )
+    
+    if items_data:
+        # 使用 calculation_details 的数据
+        items = []
+        total_amount = Decimal('0')
+        total_quantity = Decimal('0')
+        
+        for item in items_data:
+            items.append(DimensionDrillDownItem(
+                period=period,
+                department_code=dept_code,
+                department_name=dept_name,
+                item_code=item["item_code"],
+                item_name=item["item_name"],
+                item_category=item["item_category"],
+                unit_price=item["unit_price"],
+                amount=item["amount"],
+                quantity=item["quantity"]
+            ))
+            total_amount += item["amount"]
+            total_quantity += item["quantity"]
+        
+        return DimensionDrillDownResponse(
+            dimension_name=dimension_name,
+            items=items,
+            total_amount=total_amount,
+            total_quantity=total_quantity,
+            message=None
+        )
+    
+    # 回退到 charge_details 表查询（兼容旧任务）
     # 查询该维度对应的收费项目映射
     mappings = db.query(DimensionItemMapping).filter(
         DimensionItemMapping.hospital_id == hospital_id,
@@ -858,18 +1049,22 @@ def preview_dimension_drilldown(
     # 根据维度编码判断业务类型
     business_type = get_business_type_from_dimension_code(dimension_code)
     
+    # 根据维度类型选择科室字段：诊断维度用开单科室，其他用执行科室
+    use_prescribing_dept = is_diagnosis_dimension(dimension_code)
+    dept_code_field = "prescribing_dept_code" if use_prescribing_dept else "executing_dept_code"
+    
     # 从 charge_details 表查询该科室该月份该维度的收费明细
     try:
         # 根据是否需要区分业务类型构建不同的SQL
         if business_type:
-            sql = text("""
+            sql = text(f"""
                 SELECT 
                     item_code,
                     item_name,
                     SUM(amount) as total_amount,
                     SUM(quantity) as total_quantity
                 FROM charge_details
-                WHERE prescribing_dept_code = :dept_code
+                WHERE {dept_code_field} = :dept_code
                 AND TO_CHAR(charge_time, 'YYYY-MM') = :period
                 AND item_code = ANY(:item_codes)
                 AND business_type = :business_type
@@ -883,14 +1078,14 @@ def preview_dimension_drilldown(
                 "business_type": business_type
             })
         else:
-            sql = text("""
+            sql = text(f"""
                 SELECT 
                     item_code,
                     item_name,
                     SUM(amount) as total_amount,
                     SUM(quantity) as total_quantity
                 FROM charge_details
-                WHERE prescribing_dept_code = :dept_code
+                WHERE {dept_code_field} = :dept_code
                 AND TO_CHAR(charge_time, 'YYYY-MM') = :period
                 AND item_code = ANY(:item_codes)
                 GROUP BY item_code, item_name
@@ -1072,18 +1267,22 @@ def preview_business_content(
         # 根据维度编码判断业务类型
         dim_business_type = get_business_type_from_dimension_code(dimension.node_code)
         
+        # 根据维度类型选择科室字段：诊断维度用开单科室，其他用执行科室
+        use_prescribing_dept = is_diagnosis_dimension(dimension.node_code)
+        dept_code_field = "prescribing_dept_code" if use_prescribing_dept else "executing_dept_code"
+        
         # 从 charge_details 查询该维度收入 Top 5 的项目
         dim_items = []
         try:
             if dim_business_type:
-                sql = text("""
+                sql = text(f"""
                     SELECT 
                         item_code,
                         item_name,
                         SUM(amount) as total_amount,
                         SUM(quantity) as total_quantity
                     FROM charge_details
-                    WHERE prescribing_dept_code = :dept_code
+                    WHERE {dept_code_field} = :dept_code
                     AND TO_CHAR(charge_time, 'YYYY-MM') = :period
                     AND item_code = ANY(:item_codes)
                     AND business_type = :business_type
@@ -1098,14 +1297,14 @@ def preview_business_content(
                     "business_type": dim_business_type
                 })
             else:
-                sql = text("""
+                sql = text(f"""
                     SELECT 
                         item_code,
                         item_name,
                         SUM(amount) as total_amount,
                         SUM(quantity) as total_quantity
                     FROM charge_details
-                    WHERE prescribing_dept_code = :dept_code
+                    WHERE {dept_code_field} = :dept_code
                     AND TO_CHAR(charge_time, 'YYYY-MM') = :period
                     AND item_code = ANY(:item_codes)
                     GROUP BY item_code, item_name
@@ -1665,18 +1864,22 @@ def get_business_content(
         # 根据维度编码判断业务类型
         dim_business_type = get_business_type_from_dimension_code(dimension.node_code)
         
+        # 根据维度类型选择科室字段：诊断维度用开单科室，其他用执行科室
+        use_prescribing_dept = is_diagnosis_dimension(dimension.node_code)
+        dept_code_field = "prescribing_dept_code" if use_prescribing_dept else "executing_dept_code"
+        
         # 从 charge_details 查询该维度收入 Top 5 的项目
         dim_items = []
         try:
             if dim_business_type:
-                sql = text("""
+                sql = text(f"""
                     SELECT 
                         item_code,
                         item_name,
                         SUM(amount) as total_amount,
                         SUM(quantity) as total_quantity
                     FROM charge_details
-                    WHERE prescribing_dept_code = :dept_code
+                    WHERE {dept_code_field} = :dept_code
                     AND TO_CHAR(charge_time, 'YYYY-MM') = :period
                     AND item_code = ANY(:item_codes)
                     AND business_type = :business_type
@@ -1691,14 +1894,14 @@ def get_business_content(
                     "business_type": dim_business_type
                 })
             else:
-                sql = text("""
+                sql = text(f"""
                     SELECT 
                         item_code,
                         item_name,
                         SUM(amount) as total_amount,
                         SUM(quantity) as total_quantity
                     FROM charge_details
-                    WHERE prescribing_dept_code = :dept_code
+                    WHERE {dept_code_field} = :dept_code
                     AND TO_CHAR(charge_time, 'YYYY-MM') = :period
                     AND item_code = ANY(:item_codes)
                     GROUP BY item_code, item_name
@@ -1903,18 +2106,22 @@ def get_dimension_drilldown(
     # 根据维度编码判断业务类型
     business_type = get_business_type_from_dimension_code(dimension_code)
     
+    # 根据维度类型选择科室字段：诊断维度用开单科室，其他用执行科室
+    use_prescribing_dept = is_diagnosis_dimension(dimension_code)
+    dept_code_field = "prescribing_dept_code" if use_prescribing_dept else "executing_dept_code"
+    
     # 从 charge_details 表查询该科室该月份该维度的收费明细
     try:
         # 根据是否需要区分业务类型构建不同的SQL
         if business_type:
-            sql = text("""
+            sql = text(f"""
                 SELECT 
                     item_code,
                     item_name,
                     SUM(amount) as total_amount,
                     SUM(quantity) as total_quantity
                 FROM charge_details
-                WHERE prescribing_dept_code = :dept_code
+                WHERE {dept_code_field} = :dept_code
                 AND TO_CHAR(charge_time, 'YYYY-MM') = :period
                 AND item_code = ANY(:item_codes)
                 AND business_type = :business_type
@@ -1928,14 +2135,14 @@ def get_dimension_drilldown(
                 "business_type": business_type
             })
         else:
-            sql = text("""
+            sql = text(f"""
                 SELECT 
                     item_code,
                     item_name,
                     SUM(amount) as total_amount,
                     SUM(quantity) as total_quantity
                 FROM charge_details
-                WHERE prescribing_dept_code = :dept_code
+                WHERE {dept_code_field} = :dept_code
                 AND TO_CHAR(charge_time, 'YYYY-MM') = :period
                 AND item_code = ANY(:item_codes)
                 GROUP BY item_code, item_name

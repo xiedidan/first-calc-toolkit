@@ -5,8 +5,10 @@ import request from '@/utils/request'
 
 export interface CalculationTask {
   task_id: string
+  batch_id?: string
   model_version_id: number
   workflow_id?: number
+  workflow_name?: string
   period: string
   status: string
   progress: number
@@ -22,6 +24,7 @@ export interface CalculationTaskCreate {
   period: string
   department_ids?: number[]
   description?: string
+  batch_id?: string
 }
 
 export interface CalculationTaskListResponse {
@@ -57,6 +60,16 @@ export function getCalculationTask(taskId: string) {
 }
 
 /**
+ * 根据批次ID获取同批次的所有任务
+ */
+export function getTasksByBatch(batchId: string) {
+  return request({
+    url: `/calculation/tasks/batch/${batchId}`,
+    method: 'get'
+  })
+}
+
+/**
  * 创建计算任务
  */
 export function createCalculationTask(data: CalculationTaskCreate) {
@@ -75,5 +88,46 @@ export function cancelCalculationTask(taskId: string) {
   return request({
     url: `/calculation/tasks/${taskId}/cancel`,
     method: 'post'
+  })
+}
+
+
+export interface BatchInfo {
+  batch_id: string
+  task_count: number
+  periods: string[]
+  created_at: string
+  model_version_id: number
+  model_version_name?: string
+}
+
+export interface BatchListResponse {
+  total: number
+  items: BatchInfo[]
+}
+
+/**
+ * 获取批次列表
+ */
+export function getBatchList(params: {
+  model_version_id?: number
+  page?: number
+  size?: number
+}) {
+  return request({
+    url: '/calculation/batches',
+    method: 'get',
+    params
+  })
+}
+
+/**
+ * 导出批次报表
+ */
+export function exportBatchReports(batchId: string) {
+  return request({
+    url: `/calculation/results/export/batch/${batchId}`,
+    method: 'get',
+    responseType: 'blob'
   })
 }

@@ -1,0 +1,244 @@
+"""
+更新计算流程ID=37的医生业务价值计算步骤(ID=155)
+将住院-病例价值的计算方式改为从workload_statistics表获取未死亡出院人次数
+"""
+import os
+import sys
+sys.path.insert(0, 'backend')
+
+from dotenv import load_dotenv
+load_dotenv('backend/.env')
+
+from sqlalchemy import create_engine, text
+
+DATABASE_URL = os.getenv('DATABASE_URL')
+engine = create_engine(DATABASE_URL)
+
+# 新的SQL - 只修改第5部分(住院-病例价值)，改为从workload_statistics获取
+NEW_SQL = """-- ============================================================================
+-- 医生业务价值计算
+-- ============================================================================
+-- 功能: 统计医生序列各末级维度的工作量和业务价值
+--
+-- 科室代码使用规则:
+--   - 诊断类维度(dim-doc-*-diag*, dim-doc-*-eval*): 使用开单科室(prescribing_dept_code)
+--   - 其他维度(诊察、治疗、手术、病例): 使用执行科室(executing_dept_code)
+-- ============================================================================
+
+-- 1. 门诊-诊察类维度 (使用执行科室)
+INSERT INTO calculation_results (
+    task_id, node_id, department_id, node_type, node_name, node_code,
+    parent_id, workload, weight, original_weight, value, created_at
+)
+SELECT
+    '{task_id}' as task_id, mn.id as node_id, d.id as department_id,
+    'dimension' as node_type, mn.name as node_name, mn.code as node_code,
+    mn.parent_id as parent_id, SUM(cd.amount) as workload, mn.weight,
+    mn.weight as original_weight, SUM(cd.amount) * mn.weight as value, NOW() as created_at
+FROM charge_details cd
+INNER JOIN dimension_item_mappings dim ON cd.item_code = dim.item_code AND dim.hospital_id = {hospital_id}
+INNER JOIN model_nodes mn ON dim.dimension_code = mn.code AND mn.version_id = {version_id}
+INNER JOIN departments d ON cd.executing_dept_code = d.his_code AND d.hospital_id = {hospital_id} AND '医生' = ANY(d.accounting_sequences)
+WHERE cd.business_type = '门诊'
+  AND cd.year_month = '{current_year_month}'
+  AND mn.code LIKE 'dim-doc-out-diag%'
+  AND mn.is_leaf = TRUE AND d.is_active = TRUE
+GROUP BY mn.id, d.id, mn.name, mn.code, mn.parent_id, mn.weight;
+
+-- 2. 门诊-诊断类维度 (使用开单科室 - 诊断归开单科室)
+INSERT INTO calculation_results (
+    task_id, node_id, department_id, node_type, node_name, node_code,
+    parent_id, workload, weight, original_weight, value, created_at
+)
+SELECT
+    '{task_id}' as task_id, mn.id as node_id, d.id as department_id,
+    'dimension' as node_type, mn.name as node_name, mn.code as node_code,
+    mn.parent_id as parent_id, SUM(cd.amount) as workload, mn.weight,
+    mn.weight as original_weight, SUM(cd.amount) * mn.weight as value, NOW() as created_at
+FROM charge_details cd
+INNER JOIN dimension_item_mappings dim ON cd.item_code = dim.item_code AND dim.hospital_id = {hospital_id}
+INNER JOIN model_nodes mn ON dim.dimension_code = mn.code AND mn.version_id = {version_id}
+INNER JOIN departments d ON cd.prescribing_dept_code = d.his_code AND d.hospital_id = {hospital_id} AND '医生' = ANY(d.accounting_sequences)
+WHERE cd.business_type = '门诊'
+  AND cd.year_month = '{current_year_month}'
+  AND mn.code LIKE 'dim-doc-out-eval%'
+  AND mn.is_leaf = TRUE AND d.is_active = TRUE
+GROUP BY mn.id, d.id, mn.name, mn.code, mn.parent_id, mn.weight;
+
+-- 3. 门诊-治疗类维度 (使用执行科室)
+INSERT INTO calculation_results (
+    task_id, node_id, department_id, node_type, node_name, node_code,
+    parent_id, workload, weight, original_weight, value, created_at
+)
+SELECT
+    '{task_id}' as task_id, mn.id as node_id, d.id as department_id,
+    'dimension' as node_type, mn.name as node_name, mn.code as node_code,
+    mn.parent_id as parent_id, SUM(cd.amount) as workload, mn.weight,
+    mn.weight as original_weight, SUM(cd.amount) * mn.weight as value, NOW() as created_at
+FROM charge_details cd
+INNER JOIN dimension_item_mappings dim ON cd.item_code = dim.item_code AND dim.hospital_id = {hospital_id}
+INNER JOIN model_nodes mn ON dim.dimension_code = mn.code AND mn.version_id = {version_id}
+INNER JOIN departments d ON cd.executing_dept_code = d.his_code AND d.hospital_id = {hospital_id} AND '医生' = ANY(d.accounting_sequences)
+WHERE cd.business_type = '门诊'
+  AND cd.year_month = '{current_year_month}'
+  AND mn.code LIKE 'dim-doc-out-tr%'
+  AND mn.is_leaf = TRUE AND d.is_active = TRUE
+GROUP BY mn.id, d.id, mn.name, mn.code, mn.parent_id, mn.weight;
+
+-- 4. 住院-诊察类维度 (使用执行科室)
+INSERT INTO calculation_results (
+    task_id, node_id, department_id, node_type, node_name, node_code,
+    parent_id, workload, weight, original_weight, value, created_at
+)
+SELECT
+    '{task_id}' as task_id, mn.id as node_id, d.id as department_id,
+    'dimension' as node_type, mn.name as node_name, mn.code as node_code,
+    mn.parent_id as parent_id, SUM(cd.amount) as workload, mn.weight,
+    mn.weight as original_weight, SUM(cd.amount) * mn.weight as value, NOW() as created_at
+FROM charge_details cd
+INNER JOIN dimension_item_mappings dim ON cd.item_code = dim.item_code AND dim.hospital_id = {hospital_id}
+INNER JOIN model_nodes mn ON dim.dimension_code = mn.code AND mn.version_id = {version_id}
+INNER JOIN departments d ON cd.executing_dept_code = d.his_code AND d.hospital_id = {hospital_id} AND '医生' = ANY(d.accounting_sequences)
+WHERE cd.business_type = '住院'
+  AND cd.year_month = '{current_year_month}'
+  AND mn.code LIKE 'dim-doc-in-diag%'
+  AND mn.is_leaf = TRUE AND d.is_active = TRUE
+GROUP BY mn.id, d.id, mn.name, mn.code, mn.parent_id, mn.weight;
+
+-- 5. 住院-病例价值 (从workload_statistics获取未死亡出院人次数，使用his_code关联科室)
+INSERT INTO calculation_results (
+    task_id, node_id, department_id, node_type, node_name, node_code,
+    parent_id, workload, weight, original_weight, value, created_at
+)
+SELECT
+    '{task_id}' as task_id, mn.id as node_id, d.id as department_id,
+    'dimension' as node_type, mn.name as node_name, mn.code as node_code,
+    mn.parent_id as parent_id, ws.stat_value as workload, mn.weight,
+    mn.weight as original_weight, ws.stat_value * mn.weight as value, NOW() as created_at
+FROM workload_statistics ws
+INNER JOIN model_nodes mn ON mn.code = 'dim-doc-in-case' AND mn.version_id = {version_id}
+INNER JOIN departments d ON ws.department_code = d.his_code AND d.hospital_id = {hospital_id} AND '医生' = ANY(d.accounting_sequences)
+WHERE ws.stat_type = 'dim-doc-in-case'
+  AND ws.stat_month = '{current_year_month}'
+  AND d.is_active = TRUE;
+
+-- 6. 住院-诊断类维度 (使用开单科室 - 诊断归开单科室)
+INSERT INTO calculation_results (
+    task_id, node_id, department_id, node_type, node_name, node_code,
+    parent_id, workload, weight, original_weight, value, created_at
+)
+SELECT
+    '{task_id}' as task_id, mn.id as node_id, d.id as department_id,
+    'dimension' as node_type, mn.name as node_name, mn.code as node_code,
+    mn.parent_id as parent_id, SUM(cd.amount) as workload, mn.weight,
+    mn.weight as original_weight, SUM(cd.amount) * mn.weight as value, NOW() as created_at
+FROM charge_details cd
+INNER JOIN dimension_item_mappings dim ON cd.item_code = dim.item_code AND dim.hospital_id = {hospital_id}
+INNER JOIN model_nodes mn ON dim.dimension_code = mn.code AND mn.version_id = {version_id}
+INNER JOIN departments d ON cd.prescribing_dept_code = d.his_code AND d.hospital_id = {hospital_id} AND '医生' = ANY(d.accounting_sequences)
+WHERE cd.business_type = '住院'
+  AND cd.year_month = '{current_year_month}'
+  AND mn.code LIKE 'dim-doc-in-eval%'
+  AND mn.is_leaf = TRUE AND d.is_active = TRUE
+GROUP BY mn.id, d.id, mn.name, mn.code, mn.parent_id, mn.weight;
+
+-- 7. 住院-治疗类维度 (使用执行科室)
+INSERT INTO calculation_results (
+    task_id, node_id, department_id, node_type, node_name, node_code,
+    parent_id, workload, weight, original_weight, value, created_at
+)
+SELECT
+    '{task_id}' as task_id, mn.id as node_id, d.id as department_id,
+    'dimension' as node_type, mn.name as node_name, mn.code as node_code,
+    mn.parent_id as parent_id, SUM(cd.amount) as workload, mn.weight,
+    mn.weight as original_weight, SUM(cd.amount) * mn.weight as value, NOW() as created_at
+FROM charge_details cd
+INNER JOIN dimension_item_mappings dim ON cd.item_code = dim.item_code AND dim.hospital_id = {hospital_id}
+INNER JOIN model_nodes mn ON dim.dimension_code = mn.code AND mn.version_id = {version_id}
+INNER JOIN departments d ON cd.executing_dept_code = d.his_code AND d.hospital_id = {hospital_id} AND '医生' = ANY(d.accounting_sequences)
+WHERE cd.business_type = '住院'
+  AND cd.year_month = '{current_year_month}'
+  AND mn.code LIKE 'dim-doc-in-tr%'
+  AND mn.is_leaf = TRUE AND d.is_active = TRUE
+GROUP BY mn.id, d.id, mn.name, mn.code, mn.parent_id, mn.weight;
+
+-- 8. 手术-门诊类维度 (使用执行科室)
+INSERT INTO calculation_results (
+    task_id, node_id, department_id, node_type, node_name, node_code,
+    parent_id, workload, weight, original_weight, value, created_at
+)
+SELECT
+    '{task_id}' as task_id, mn.id as node_id, d.id as department_id,
+    'dimension' as node_type, mn.name as node_name, mn.code as node_code,
+    mn.parent_id as parent_id, SUM(cd.amount) as workload, mn.weight,
+    mn.weight as original_weight, SUM(cd.amount) * mn.weight as value, NOW() as created_at
+FROM charge_details cd
+INNER JOIN dimension_item_mappings dim ON cd.item_code = dim.item_code AND dim.hospital_id = {hospital_id}
+INNER JOIN model_nodes mn ON dim.dimension_code = mn.code AND mn.version_id = {version_id}
+INNER JOIN departments d ON cd.executing_dept_code = d.his_code AND d.hospital_id = {hospital_id} AND '医生' = ANY(d.accounting_sequences)
+WHERE cd.business_type = '门诊'
+  AND cd.year_month = '{current_year_month}'
+  AND mn.code LIKE 'dim-doc-sur-out%'
+  AND mn.is_leaf = TRUE AND d.is_active = TRUE
+GROUP BY mn.id, d.id, mn.name, mn.code, mn.parent_id, mn.weight;
+
+-- 9. 手术-住院类维度 (使用执行科室)
+INSERT INTO calculation_results (
+    task_id, node_id, department_id, node_type, node_name, node_code,
+    parent_id, workload, weight, original_weight, value, created_at
+)
+SELECT
+    '{task_id}' as task_id, mn.id as node_id, d.id as department_id,
+    'dimension' as node_type, mn.name as node_name, mn.code as node_code,
+    mn.parent_id as parent_id, SUM(cd.amount) as workload, mn.weight,
+    mn.weight as original_weight, SUM(cd.amount) * mn.weight as value, NOW() as created_at
+FROM charge_details cd
+INNER JOIN dimension_item_mappings dim ON cd.item_code = dim.item_code AND dim.hospital_id = {hospital_id}
+INNER JOIN model_nodes mn ON dim.dimension_code = mn.code AND mn.version_id = {version_id}
+INNER JOIN departments d ON cd.executing_dept_code = d.his_code AND d.hospital_id = {hospital_id} AND '医生' = ANY(d.accounting_sequences)
+WHERE cd.business_type = '住院'
+  AND cd.year_month = '{current_year_month}'
+  AND mn.code LIKE 'dim-doc-sur-in%'
+  AND mn.is_leaf = TRUE AND d.is_active = TRUE
+GROUP BY mn.id, d.id, mn.name, mn.code, mn.parent_id, mn.weight;
+
+-- 返回插入的记录数
+SELECT COUNT(*) as inserted_count
+FROM calculation_results
+WHERE task_id = '{task_id}'
+  AND node_type = 'dimension'
+  AND (node_code LIKE 'dim-doc-out%' OR node_code LIKE 'dim-doc-in%' OR node_code LIKE 'dim-doc-sur%');
+"""
+
+def main():
+    with engine.connect() as conn:
+        # 验证步骤存在
+        result = conn.execute(text("SELECT id, name, workflow_id FROM calculation_steps WHERE id = 155"))
+        row = result.fetchone()
+        if not row:
+            print("错误: 步骤ID=155不存在")
+            return
+        
+        print(f"找到步骤: ID={row[0]}, 名称={row[1]}, 流程ID={row[2]}")
+        
+        # 更新SQL
+        conn.execute(text("""
+            UPDATE calculation_steps 
+            SET code_content = :sql, updated_at = NOW()
+            WHERE id = 155
+        """), {"sql": NEW_SQL})
+        conn.commit()
+        
+        # 验证更新
+        result = conn.execute(text("SELECT LENGTH(code_content) FROM calculation_steps WHERE id = 155"))
+        length = result.fetchone()[0]
+        print(f"更新成功! SQL长度: {length} 字符")
+        
+        # 显示关键变更
+        print("\n关键变更:")
+        print("- 第5部分(住院-病例价值)改为从workload_statistics表获取")
+        print("- 使用stat_type = 'dim-doc-in-case'筛选未死亡出院人次数")
+        print("- 使用accounting_unit_code关联科室")
+
+if __name__ == "__main__":
+    main()

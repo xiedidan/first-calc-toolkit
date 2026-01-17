@@ -22,6 +22,7 @@ from .calculation_step_log import CalculationStepLog
 from .calculation_step import CalculationStep
 from .calculation_workflow import CalculationWorkflow
 from .calculation_task import CalculationTask
+from .calculation_detail import CalculationDetail
 from .data_source import DataSource
 from .data_template import DataTemplate
 from .data_issue import DataIssue, ProcessingStage
@@ -50,6 +51,8 @@ from .metric_project import MetricProject
 from .metric_topic import MetricTopic
 from .metric import Metric, MetricType
 from .metric_relation import MetricRelation, RelationType
+from .dimension_analysis import DimensionAnalysis
+from .dim_inclusive_fee import DimInclusiveFee
 
 __all__ = [
     "User",
@@ -76,6 +79,7 @@ __all__ = [
     "CalculationStep",
     "CalculationStepLog",
     "CalculationTask",
+    "CalculationDetail",
     "DataSource",
     "DataTemplate",
     "DataIssue",
@@ -115,4 +119,8 @@ __all__ = [
     "MetricType",
     "MetricRelation",
     "RelationType",
+    # 维度分析
+    "DimensionAnalysis",
+    # 内含式收费
+    "DimInclusiveFee",
 ]

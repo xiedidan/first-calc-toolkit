@@ -119,6 +119,9 @@ class SQLGenerationService:
             elif isinstance(metric.dimension_tables, dict):
                 dimension_tables = list(metric.dimension_tables.values())
         
+        # 处理源表（数组类型）
+        source_tables = metric.source_tables or []
+        
         return {
             "id": metric.id,
             "name_cn": metric.name_cn,
@@ -127,7 +130,7 @@ class SQLGenerationService:
             "metric_level": metric.metric_level,
             "business_caliber": metric.business_caliber,
             "technical_caliber": metric.technical_caliber,
-            "source_table": metric.source_table,
+            "source_tables": source_tables,
             "dimensions": dimensions,
             "dimension_tables": dimension_tables,
             "project_name": metric.topic.project.name if metric.topic and metric.topic.project else None,
@@ -282,8 +285,8 @@ class SQLGenerationService:
         if metric_def.get('technical_caliber'):
             parts.append(f"技术口径: {metric_def['technical_caliber']}")
         
-        if metric_def.get('source_table'):
-            parts.append(f"源表: {metric_def['source_table']}")
+        if metric_def.get('source_tables'):
+            parts.append(f"源表: {', '.join(metric_def['source_tables'])}")
         
         if metric_def.get('dimensions'):
             parts.append(f"维度: {', '.join(metric_def['dimensions'])}")
@@ -381,8 +384,8 @@ class SQLGenerationService:
                 metric_context += f"{i}. {m['name_cn']}\n"
                 if m.get('business_caliber'):
                     metric_context += f"   业务口径: {m['business_caliber']}\n"
-                if m.get('source_table'):
-                    metric_context += f"   源表: {m['source_table']}\n"
+                if m.get('source_tables'):
+                    metric_context += f"   源表: {', '.join(m['source_tables'])}\n"
                 metric_context += "\n"
         
         # 调用AI生成
@@ -465,7 +468,7 @@ class SQLGenerationService:
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 model_name=ai_interface.model_name,
-                timeout=90.0,  # SQL生成可能需要更长时间
+                timeout=120.0,  # SQL生成可能需要更长时间
             )
             
             # 解析AI响应
@@ -711,7 +714,7 @@ class SQLGenerationService:
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 model_name=ai_interface.model_name,
-                timeout=60.0,
+                timeout=120.0,
             )
             
             logger.info(f"SQL解释生成成功: hospital_id={hospital_id}")

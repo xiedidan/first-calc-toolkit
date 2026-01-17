@@ -121,6 +121,7 @@ export function deleteConversation(id: number) {
 
 /**
  * 发送消息
+ * AI请求可能需要较长时间，设置120秒超时
  */
 export function sendMessage(conversationId: number, content: string) {
   if (!conversationId || isNaN(conversationId)) {
@@ -128,6 +129,24 @@ export function sendMessage(conversationId: number, content: string) {
   }
   return request.post<SendMessageResponse>(`/conversations/${conversationId}/messages`, {
     content,
+  }, {
+    timeout: 120000,  // AI请求延长到120秒
+  })
+}
+
+/**
+ * 使用原始问题直接搜索（跳过AI关键词提取）
+ * 当AI提取的关键词不准确时，用户可以使用原始问题直接搜索
+ * AI请求可能需要较长时间，设置120秒超时
+ */
+export function retryDirectSearch(conversationId: number, content: string) {
+  if (!conversationId || isNaN(conversationId)) {
+    return Promise.reject(new Error('无效的对话ID'))
+  }
+  return request.post<SendMessageResponse>(`/conversations/${conversationId}/messages/retry-direct`, {
+    content,
+  }, {
+    timeout: 120000,  // AI请求延长到120秒
   })
 }
 
